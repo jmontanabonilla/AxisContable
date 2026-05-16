@@ -1,0 +1,317 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container-fluid">
+
+  <!-- Encabezado -->
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h2 class="mb-0">Detalle de Venta (Cuenta de Cobro)</h2>
+    <div class="d-flex gap-2">
+      <a href="{{ url_for('ventas_page') }}" class="btn btn-outline-secondary">Volver a ventas</a>
+      <form action="{{ url_for('cerrar_venta', venta_id=venta.Id) }}" method="POST" class="d-inline">
+  <button type="submit" id="btnGuardarVenta" class="btn btn-primary" {% if venta.VentaCerrada %}disabled{% endif %}>Guardar Venta</button>
+</form>
+<a href="{{ url_for('generar_pdf_cuenta_cobro', venta_id=venta.Id) }}" id="btnImprimir" class="btn btn-outline-primary">Imprimir PDF</a>
+
+    </div>
+  </div>
+
+  <!-- Información de la venta -->
+  <div class="card mb-4">
+    <div class="card-body row text-center">
+      <div class="col-md-3"><strong>Número Documento:</strong><br>{{ venta.NumeroDocumento }}</div>
+      <div class="col-md-3"><strong>Fecha Emisión:</strong><br>{{ venta.FechaEmision }}</div>
+      <div class="col-md-3"><strong>Total Venta:</strong><br>${{ "{:,.0f}".format(venta.TotalVenta) }}</div>
+      <div class="col-md-3"><strong>Estado:</strong><br>
+        {% if venta.VentaCerrada %}
+          <span class="text-success fw-bold">Cerrada</span>
+        {% else %}
+          <span class="text-warning fw-bold">Abierta</span>
+        {% endif %}
+      </div>
+    </div>
+    <div class="card-footer text-end">
+      <button type="button" class="btn btn-sm btn-outline-primary"
+              data-bs-toggle="modal" data-bs-target="#modalEditarVenta"
+              {% if venta.VentaCerrada %}disabled{% endif %}>
+        Editar Venta
+      </button>
+    </div>
+  </div>
+
+  <!-- Formulario para adicionar detalle -->
+  <div class="card mb-4">
+    <div class="card-body">
+      <form method="POST" action="{{ url_for('detalleventa_page', venta_id=venta.Id) }}" class="row g-3" id="form-detalle">
+        <div class="col-md-6">
+            <label for="numero_identificacion" class="form-label"><strong>Número de Identificación del Cliente</strong></label>
+        <div class="input-group">
+        <input type="text" id="numero_identificacion" name="numero_identificacion"
+       class="form-control"
+       value="{{ cliente.NumeroIdentificacion if cliente else '' }}"
+       {% if venta.VentaCerrada %}readonly{% endif %}>
+
+<button type="button" id="btnBuscarCliente" class="btn btn-outline-primary"
+        {% if venta.VentaCerrada %}disabled{% endif %}>Buscar</button>
+
+        </div>
+        </div>
+
+        <div class="col-md-6">
+          <label class="form-label"><strong>Datos del cliente</strong></label>
+          <div class="border rounded p-3 bg-light">
+            <p><strong>Razón social:</strong> <span id="pv-razon">{{ cliente.RazonSocial if cliente else "—" }}</span></p>
+            <p><strong>Número de identificación:</strong> <span id="pv-nit">{{ cliente.NumeroIdentificacion if cliente else "—" }}</span></p>
+            <p><strong>Dirección:</strong> <span id="pv-dir">{{ cliente.Direccion if cliente else "—" }}</span></p>
+            <p><strong>Teléfono:</strong> <span id="pv-tel">{{ cliente.Telefono if cliente else "—" }}</span></p>
+            <p><strong>Correo:</strong> <span id="pv-mail">{{ cliente.Correo if cliente else "—" }}</span></p>
+
+          </div>
+        </div>
+        <div class="col-md-12">
+          <label class="form-label"><strong>Descripción</strong></label>
+          <textarea name="descripcion" class="form-control" rows="3" required {% if venta.VentaCerrada %}disabled{% endif %}></textarea>
+        </div>
+        <div class="col-md-4">
+          <label class="form-label"><strong>Cantidad</strong></label>
+          <input type="number" name="cantidad" class="form-control" min="1" required {% if venta.VentaCerrada %}disabled{% endif %}>
+        </div>
+        <div class="col-md-4">
+          <label class="form-label"><strong>Valor unitario</strong></label>
+          <input type="number" step="0.01" name="valor_unitario" class="form-control" min="0.01" required {% if venta.VentaCerrada %}disabled{% endif %}>
+        </div>
+        <div class="col-md-4">
+          <label class="form-label"><strong>Valor total unitario</strong></label>
+          <input type="text" id="total_visual" class="form-control" value="$0" readonly disabled>
+        </div>
+        <div class="col-md-12 d-flex justify-content-end">
+          <button type="submit" class="btn btn-primary" {% if venta.VentaCerrada %}disabled{% endif %}>Guardar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+<div class="mt-3 text-start">
+  <span id="estado_total" class="badge fs-5 fw-bold">Total: {{ subtotal_actual }}</span>
+</div>
+
+
+
+
+  <!-- Tabla de detalles -->
+  {% if detalles and detalles|length > 0 %}
+  
+  <div class="table-responsive">
+  <table class="table table-striped table-hover align-middle">
+    <thead class="table-light">
+      <tr>
+        <th>Número Línea</th>
+        <th>Descripción</th>
+        <th>Cantidad</th>
+        <th>Valor Unitario</th>
+        <th>Valor Total</th>
+        <th>Acciones</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for d in detalles %}
+      <tr>
+        <td>{{ d.NumeroLinea if d.NumeroLinea is defined else loop.index }}</td>
+        <td>{{ d.Descripcion }}</td>
+        <td>{{ d.Cantidad }}</td>
+        <td>${{ "{:,.2f}".format(d.ValorUnitario) }}</td>
+        <td>${{ "{:,.2f}".format(d.ValorTotalUnitario or 0) }}</td>
+        <td class="d-flex gap-2">
+          <!-- Botón que abre el modal -->
+          <a href="#" 
+             class="btn btn-sm btn-outline-primary" 
+             data-bs-toggle="modal" 
+             data-bs-target="#modalEditar{{ d.Id }}"
+             {% if venta.VentaCerrada %}disabled{% endif %}>
+             Editar
+          </a>
+        </td>
+      </tr>
+
+      <!-- Modal de edición -->
+      <div class="modal fade" id="modalEditar{{ d.Id }}" tabindex="-1" aria-labelledby="modalEditarLabel{{ d.Id }}" aria-hidden="true">
+        <div class="modal-dialog">
+          <div class="modal-content">
+            <form method="POST" action="{{ url_for('editar_detalle', detalle_id=d.Id, venta_id=venta.Id) }}">
+              <div class="modal-header">
+                <h5 class="modal-title" id="modalEditarLabel{{ d.Id }}">Editar Detalle</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+              </div>
+              <div class="modal-body">
+                <div class="mb-3">
+                  <label class="form-label"><strong>Descripción</strong></label>
+                  <input type="text" name="descripcion" class="form-control" value="{{ d.Descripcion }}" required>
+                </div>
+                <div class="mb-3">
+                  <label class="form-label"><strong>Cantidad</strong></label>
+                  <input type="number" step="0.01" name="cantidad" class="form-control" value="{{ d.Cantidad }}" required>
+                </div>
+                <div class="mb-3">
+                  <label class="form-label"><strong>Valor Unitario</strong></label>
+                  <input type="number" step="0.01" name="valor_unitario" class="form-control" value="{{ d.ValorUnitario }}" required>
+                </div>
+              </div>
+              <div class="modal-footer">
+                <button type="submit" class="btn btn-primary">Guardar Cambios</button>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+
+
+  {% else %}
+  <div class="alert-fixed alert-info text-center"><strong>No hay detalles registrados para esta venta.</strong></div>
+  {% endif %}
+
+</div>
+
+<!-- Modal Editar Venta -->
+<div class="modal fade" id="modalEditarVenta" tabindex="-1" aria-labelledby="modalEditarVentaLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <form method="POST" action="{{ url_for('editar_venta_cuenta_cobro', venta_id=venta.Id) }}">
+        <div class="modal-header">
+          <h5 class="modal-title" id="modalEditarVentaLabel">Editar Venta</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-3">
+            <label class="form-label"><strong>Fecha Emisión</strong></label>
+            <input type="date" name="fecha_emision_edit" class="form-control" value="{{ venta.FechaEmision }}" required>
+          </div>
+          <div class="mb-3">
+            <label class="form-label"><strong>Total Venta</strong></label>
+            <input type="number" step="0.01" name="total_venta_edit" class="form-control" value="{{ venta.TotalVenta }}" required>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="submit" class="btn btn-primary">Guardar Cambios</button>
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  document.addEventListener("DOMContentLoaded", function() {
+    const nitInput = document.getElementById("numero_identificacion");
+    const btnBuscarCliente = document.getElementById("btnBuscarCliente");
+    const pvRazon = document.getElementById("pv-razon");
+    const pvNit = document.getElementById("pv-nit");
+    const pvDir = document.getElementById("pv-dir");
+    const pvTel = document.getElementById("pv-tel");
+    const pvMail = document.getElementById("pv-mail");
+    const cantidadInput = document.querySelector('input[name="cantidad"]');
+    const unitarioInput = document.querySelector('input[name="valor_unitario"]');
+    const totalVisual = document.getElementById("total_visual");
+    const estadoTotal = document.getElementById("estado_total");
+
+    // Botones de acción
+    const btnGuardarVenta = document.getElementById("btnGuardarVenta");
+    const btnImprimir = document.getElementById("btnImprimir");
+
+    // Valores que vienen del backend
+    const totalVenta = {{ venta.TotalVenta|default(0) }};
+    const subtotalActual = {{ subtotal_actual|default(0) }};
+    const tieneItems = {{ (detalles|length > 0)|int }}; // 1 si hay ítems, 0 si no
+
+    // Funciones para llenar/limpiar el recuadro gris
+    function fillPreview(cliente) {
+      pvRazon.textContent = cliente.RazonSocial || "—";
+      pvNit.textContent = cliente.NumeroIdentificacion || "—";
+      pvDir.textContent = cliente.Direccion || "—";
+      pvTel.textContent = cliente.Telefono || "—";
+      pvMail.textContent = cliente.Correo || "—";
+    }
+    function clearPreview() {
+      pvRazon.textContent = "—";
+      pvNit.textContent = "—";
+      pvDir.textContent = "—";
+      pvTel.textContent = "—";
+      pvMail.textContent = "—";
+    }
+
+    // Acción al presionar Buscar
+    btnBuscarCliente?.addEventListener("click", async function() {
+      const nit = nitInput.value.trim();
+      if (!nit) {
+        alert("Ingrese un número de identificación.");
+        return;
+      }
+      try {
+        const response = await fetch(`/api/clientes/${nit}`);
+        if (!response.ok) throw new Error("Error al consultar cliente");
+        const cliente = await response.json();
+        fillPreview(cliente);
+      } catch (err) {
+        alert("Cliente no encontrado.");
+        clearPreview();
+      }
+    });
+
+    // Validación del total
+    function validarTotal() {
+      if (!estadoTotal) return;
+      estadoTotal.textContent = `Total: ${subtotalActual}`;
+
+      if (subtotalActual < totalVenta) {
+        estadoTotal.className = "badge bg-warning text-dark fs-5 fw-bold";
+      } else if (subtotalActual === totalVenta) {
+        estadoTotal.className = "badge bg-success text-white fs-5 fw-bold";
+      } else {
+        estadoTotal.className = "badge bg-danger text-white fs-5 fw-bold";
+      }
+    }
+
+    // Total visual en tiempo real
+    function formatCOP(n) {
+      return new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 2 }).format(n || 0);
+    }
+    function updateTotalVisual() {
+      const cant = parseFloat(cantidadInput?.value || "0");
+      const vu = parseFloat(unitarioInput?.value || "0");
+      if (totalVisual) totalVisual.value = formatCOP(cant * vu);
+    }
+
+    cantidadInput?.addEventListener("input", updateTotalVisual);
+    unitarioInput?.addEventListener("input", updateTotalVisual);
+    updateTotalVisual();
+
+    // Ejecutar validación al cargar
+    validarTotal();
+
+    // 🔒 Validar botones Guardar e Imprimir
+    btnGuardarVenta?.addEventListener("click", function(e) {
+      if (!tieneItems) {
+        e.preventDefault();
+        alert("Debe registrar al menos un ítem antes de guardar la venta.");
+        return;
+      }
+      if (subtotalActual !== totalVenta) {
+        e.preventDefault();
+        alert("No puede guardar la venta: el total de ítems debe ser igual al Total de la venta.");
+      }
+    });
+
+    btnImprimir?.addEventListener("click", function(e) {
+      if (!tieneItems) {
+        e.preventDefault();
+        alert("Debe registrar al menos un ítem antes de imprimir.");
+      }
+    });
+  });
+</script>
+{% endblock %}

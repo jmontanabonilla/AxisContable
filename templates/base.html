@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>AxisContable</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <!-- Bootstrap -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons/font/bootstrap-icons.css">
+
+  <style>
+    body { display: flex; min-height: 100vh; }
+
+    .sidebar {
+      width: 260px;
+      background-color: #212529;
+      color: #fff;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .sidebar h4 {
+      padding: 20px;
+      margin: 0;
+      border-bottom: 1px solid #343a40;
+      text-align: center;
+    }
+
+    .sidebar a {
+      color: #adb5bd;
+      padding: 10px 18px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      text-decoration: none;
+      transition: 0.2s;
+    }
+
+    .sidebar a:hover,
+    .sidebar a.active {
+      background-color: #343a40;
+      color: #fff;
+    }
+
+    .submenu a {
+      padding-left: 40px;
+      font-size: 0.9rem;
+    }
+
+    .user-section {
+      margin-top: auto;
+      padding: 15px;
+      border-top: 1px solid #495057;
+    }
+
+    .content {
+      flex-grow: 1;
+      padding: 25px;
+      background-color: #f8f9fa;
+    }
+  </style>
+</head>
+
+<body>
+
+{% if session["usuario"] %}
+<div class="sidebar">
+
+  <h4>AxisContable</h4>
+
+  <ul class="nav flex-column">
+
+    <!-- INICIO -->
+    <li class="nav-item">
+      <a class="nav-link {% if request.endpoint == 'dashboard' %}active{% endif %}"
+         href="{{ url_for('dashboard') }}">
+        <i class="bi bi-house"></i> Inicio
+      </a>
+    </li>
+
+    <!-- VENTAS -->
+    <li class="nav-item">
+      <a class="nav-link" data-bs-toggle="collapse" href="#ventasMenu">
+        <i class="bi bi-cart"></i> Ventas
+      </a>
+
+      <div class="collapse 
+          {% if request.endpoint in [
+              'caja_registradora',
+              'ventas_page',
+              'dashboard_ventas',
+              'notas_credito'
+          ] %}show{% endif %}"
+          id="ventasMenu">
+
+        <ul class="nav flex-column submenu">
+
+          <li>
+            <a class="nav-link {% if request.endpoint == 'caja_registradora' %}active{% endif %}"
+              href="{{ url_for('caja_registradora') }}">
+              Caja Registradora
+            </a>
+          </li>
+
+          <li>
+            <a class="nav-link {% if request.endpoint == 'ventas_page' %}active{% endif %}"
+              href="{{ url_for('ventas_page') }}">
+              Ventas Manuales
+            </a>
+          </li>
+
+          <li>
+            <a class="nav-link {% if request.endpoint == 'dashboard_ventas' %}active{% endif %}"
+              href="{{ url_for('dashboard_ventas') }}">
+              Dashboard Ventas
+            </a>
+          </li>
+
+          <li>
+            <a class="nav-link {% if request.endpoint == 'notas_credito' %}active{% endif %}"
+              href="{{ url_for('notas_credito') }}">
+              Notas Crédito
+            </a>
+          </li>
+
+        </ul>
+      </div>
+    </li>
+
+
+    <!-- GASTOS -->
+    <li class="nav-item">
+      <a class="nav-link" data-bs-toggle="collapse" href="#gastosMenu">
+        <i class="bi bi-cash-stack"></i> Gastos
+      </a>
+      <div class="collapse {% if 'gastos' in request.endpoint %}show{% endif %}" id="gastosMenu">
+        <ul class="nav flex-column submenu">
+          <li><a class="nav-link" href="{{ url_for('gastos_generales_page') }}">Registro de Gastos</a></li>
+          <li><a class="nav-link" href="{{ url_for('dashboard_gastos') }}">Dashboard Gastos</a></li>
+        </ul>
+      </div>
+    </li>
+
+    <!-- INVENTARIOS -->
+    <li class="nav-item">
+      <a class="nav-link" data-bs-toggle="collapse" href="#inventariosMenu">
+        <i class="bi bi-box-seam"></i> Inventarios
+      </a>
+      <div class="collapse {% if 'inventarios' in request.endpoint %}show{% endif %}" id="inventariosMenu">
+        <ul class="nav flex-column submenu">
+          <li><a class="nav-link" href="{{ url_for('inventarios_page') }}">Registro Inventarios</a></li>
+          <li><a class="nav-link" href="{{ url_for('dashboard_inventarios') }}">Dashboard Inventarios</a></li>
+        </ul>
+      </div>
+    </li>
+
+
+    <!-- FACTURAS PROVEEDORES -->
+    <li class="nav-item">
+      <a class="nav-link" data-bs-toggle="collapse" href="#facturasProvMenu">
+        <i class="bi bi-receipt"></i> Facturas Proveedores
+      </a>
+
+      <div class="collapse
+                  {% if request.endpoint in ['proveedores_page',
+                                            'dashboard_facturas_proveedores'] %}
+                      show
+                  {% endif %}"
+          id="facturasProvMenu">
+
+        <ul class="nav flex-column submenu">
+
+          <li>
+            <a class="nav-link
+                      {% if request.endpoint == 'proveedores_page' %}active{% endif %}"
+              href="{{ url_for('proveedores_page') }}">
+              Registro Facturas Proveedores
+            </a>
+          </li>
+
+          <li>
+            <a class="nav-link
+                      {% if request.endpoint == 'dashboard_facturas_proveedores' %}active{% endif %}"
+              href="{{ url_for('dashboard_facturas_proveedores') }}">
+              Dashboard Facturas Proveedores
+            </a>
+          </li>
+
+        </ul>
+      </div>
+    </li>
+
+
+    <!-- CLIENTES -->
+    <li class="nav-item">
+      <a class="nav-link {% if request.endpoint == 'clientes_page' %}active{% endif %}"
+         href="{{ url_for('clientes_page') }}">
+        <i class="bi bi-people"></i> Clientes
+      </a>
+    </li>
+
+    <!-- CONFIGURACIÓN -->
+    <li class="nav-item">
+      <a class="nav-link" data-bs-toggle="collapse" href="#configMenu">
+        <i class="bi bi-gear"></i> Configuración
+      </a>
+
+      <div class="collapse 
+                  {% if request.endpoint in [
+                      'categorias_gasto_page',
+                      'categorias_inventario_page',
+                      'consecutivos_page',
+                      'modulos_page',
+                      'parametros_page',
+                      'permisos_page',
+                      'usuarios_page'
+                  ] %}show{% endif %}"
+          id="configMenu">
+
+        <ul class="nav flex-column submenu">
+
+          <li>
+            <a class="nav-link {% if request.endpoint == 'categorias_gasto_page' %}active{% endif %}"
+              href="{{ url_for('categorias_gasto_page') }}">
+              Categoría de Gastos
+            </a>
+          </li>
+
+          <!-- NUEVO: Categorías de Inventario -->
+          <li>
+            <a class="nav-link {% if request.endpoint == 'categorias_inventario_page' %}active{% endif %}"
+              href="{{ url_for('categorias_inventario_page') }}">
+              Categoría de Inventario
+            </a>
+          </li>
+
+          <li>
+            <a class="nav-link {% if request.endpoint == 'consecutivos_page' %}active{% endif %}"
+              href="{{ url_for('consecutivos_page') }}">
+              Consecutivos
+            </a>
+          </li>
+
+          <li>
+            <a class="nav-link {% if request.endpoint == 'modulos_page' %}active{% endif %}"
+              href="{{ url_for('modulos_page') }}">
+              Módulos
+            </a>
+          </li>
+
+          <li>
+            <a class="nav-link {% if request.endpoint == 'parametros_page' %}active{% endif %}"
+              href="{{ url_for('parametros_page') }}">
+              Parámetros de Negocio
+            </a>
+          </li>
+
+          <li>
+            <a class="nav-link {% if request.endpoint == 'permisos_page' %}active{% endif %}"
+              href="{{ url_for('permisos_page') }}">
+              Permisos
+            </a>
+          </li>
+
+          <li>
+            <a class="nav-link {% if request.endpoint == 'usuarios_page' %}active{% endif %}"
+              href="{{ url_for('usuarios_page') }}">
+              Usuarios
+            </a>
+          </li>
+
+        </ul>
+      </div>
+    </li>
+
+
+  </ul>
+
+  <!-- USUARIO -->
+  <div class="user-section">
+    <div class="dropdown">
+      <button class="btn btn-outline-light dropdown-toggle w-100" data-bs-toggle="dropdown">
+        {{ session["usuario"] }} ({{ session["rol_nombre"] }})
+      </button>
+      <ul class="dropdown-menu dropdown-menu-dark w-100">
+        <li><a class="dropdown-item" href="{{ url_for('cambiar_contrasena') }}">Cambiar contraseña</a></li>
+        <li><hr class="dropdown-divider"></li>
+        <li><a class="dropdown-item text-danger fw-bold" href="{{ url_for('logout') }}">Cerrar sesión</a></li>
+      </ul>
+    </div>
+  </div>
+
+</div>
+{% endif %}
+
+<!-- CONTENIDO PRINCIPAL -->
+<div class="content">
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      {% for category, message in messages %}
+        <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+          {{ message }}
+          <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+      {% endfor %}
+    {% endif %}
+  {% endwith %}
+
+  {% block content %}{% endblock %}
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+
+{% block scripts %}{% endblock %}
+</body>
+</html>

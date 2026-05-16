@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block title %}Historial de Ventas{% endblock %}
+
+{% block content %}
+
+<div class="container-fluid mt-4">
+
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h3 class="fw-bold">Historial de Ventas</h3>
+
+        <form method="GET" class="d-flex" style="max-width: 300px;">
+            <input type="text" name="search" class="form-control form-control-sm"
+                   placeholder="Buscar por número o prefijo..."
+                   value="{{ request.args.get('search', '') }}">
+            <button class="btn btn-primary btn-sm ms-2">Buscar</button>
+        </form>
+    </div>
+
+    <div class="card shadow-sm">
+        <div class="card-body p-0">
+
+            <table class="table table-hover table-striped mb-0">
+                <thead class="table-dark">
+                    <tr>
+                        <th>ID</th>
+                        <th>Fecha</th>
+                        <th>Documento</th>
+                        <th>Total</th>
+                        <th>Medio de Pago</th>
+                        <th>Estado</th>
+                        <th class="text-center">Acciones</th>
+                    </tr>
+                </thead>
+
+                <tbody>
+                    {% for v in ventas %}
+                    <tr>
+                        <td>{{ v[0] }}</td>
+
+                        <td>
+                            {{ v[1].strftime("%Y-%m-%d") if v[1] else "" }}
+                        </td>
+
+                        <td>
+                            <span class="fw-bold">{{ v[2] }}-{{ v[3] }}</span>
+                        </td>
+
+                        <td>${{ "%.0f"|format(v[4]) }}</td>
+
+                        <td>{{ v[5] }}</td>
+
+                        <td>
+                            {% if v[6] == 1 %}
+                                <span class="badge bg-success">Activa</span>
+                            {% else %}
+                                <span class="badge bg-secondary">Inactiva</span>
+                            {% endif %}
+                        </td>
+
+                        <td class="text-center">
+                            <a href="/detalleventa/pdf/{{ v[0] }}" target="_blank"
+                               class="btn btn-sm btn-outline-primary">
+                                Ver PDF
+                            </a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+
+            </table>
+        </div>
+    </div>
+
+</div>
+
+{% endblock %}

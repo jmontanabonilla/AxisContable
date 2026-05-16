@@ -1,0 +1,218 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container-fluid">
+
+ <!-- Header y búsqueda -->
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h2 class="mb-0">Gastos Generales</h2>
+    <form class="d-flex" method="get" action="{{ url_for('gastos_generales_page') }}">
+      <input class="form-control me-2" type="text" name="search" value="{{ search }}" placeholder="Buscar por descripción o categoría">
+      <input type="hidden" name="periodo" value="{{ periodo_seleccionado }}">
+      <button class="btn btn-outline-secondary" type="submit">Buscar</button>
+    </form>
+  </div>
+
+  <!-- Selector de período -->
+  <form class="row g-3 mb-3" method="get" action="{{ url_for('gastos_generales_page') }}">
+    <div class="col-md-4">
+      <label class="form-label">Período a consultar</label>
+      <select name="periodo" class="form-select" onchange="this.form.submit()">
+        {% for p in periodos_disponibles %}
+          <option value="{{ p.valor }}" {% if p.valor == periodo_seleccionado %}selected{% endif %}>{{ p.nombre }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <input type="hidden" name="search" value="{{ search }}">
+    <input type="hidden" name="page" value="{{ page }}">
+  </form>
+
+  <!-- Indicadores -->
+  <div class="card mb-4">
+    <div class="card-body d-flex justify-content-between">
+      <div><strong>Período seleccionado:</strong> {{ periodo_seleccionado }}</div>
+      <div><strong>Total gastos:</strong> ${{ "{:,.0f}".format(total_mes) }}</div>
+      <div><strong>Total registros:</strong> {{ total }}</div>
+    </div>
+  </div>
+
+  <!-- Formulario de creación -->
+  <div class="card mb-4">
+    <div class="card-body">
+      <form method="POST" class="row g-3">
+        <input type="hidden" name="periodo" value="{{ periodo_seleccionado }}">
+        <div class="col-md-3">
+          <label class="form-label">Fecha</label>
+          <input type="date" name="fecha" class="form-control"
+            {% if permitir_anteriores == 0 %} min="{{ inicio_mes_str }}" {% endif %}
+            max="{{ fin_mes_str }}" required>
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">Tipo de Registro</label>
+          <select name="tipo_registro" class="form-select" required>
+            <option value="">Seleccione...</option>
+            <option value="Fijo">Fijo</option>
+            <option value="Mensual">Mensual</option>
+          </select>
+        </div>
+        <div class="col-md-6">
+          <label class="form-label">Descripción</label>
+          <input type="text" name="descripcion" class="form-control" required>
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">Categoría</label>
+          <select name="categoria_id" class="form-select" required>
+            <option value="">Seleccione...</option>
+            {% for cat in categorias %}
+              <option value="{{ cat.id }}">
+                {{ cat.nombre }}{% if cat.es_unica %} (única por mes){% endif %}
+              </option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">Valor</label>
+          <input type="number" step="0.01" min="0" name="valor" class="form-control" required>
+        </div>
+        <div class="col-md-4 d-flex align-items-end">
+          <button type="submit" class="btn btn-primary w-100">Guardar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Si no hay gastos, mostrar alerta -->
+  {% if not gastos %}
+    <div class="alert alert-info text-center">
+      No hay registro de gastos en este período.
+    </div>
+  {% else %}
+
+  <!-- Encabezado de tabla: total y página -->
+  <div class="d-flex justify-content-between align-items-center mb-2">
+    <div class="mb-0"><strong>Total Gastos:</strong> {{ total }}</div>
+    <div>Página {{ page }} de {{ total_pages }}</div>
+  </div>
+
+  <!-- Tabla -->
+  <div class="table-responsive">
+    <table class="table table-striped table-hover align-middle">
+      <thead class="table-light">
+        <tr>
+          <th>Fecha</th>
+          <th>Tipo</th>
+          <th>Descripción</th>
+          <th>Categoría</th>
+          <th>Valor</th>
+          <th>Fecha Registro</th>
+          <th class="text-end">Acciones</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for g in gastos %}
+        <tr>
+          <td>{{ g.fecha }}</td>
+          <td>{{ g.tipo_registro }}</td>
+          <td>{{ g.descripcion }}</td>
+          <td>{{ g.categoria }}</td>
+          <td>${{ "{:,.0f}".format(g.valor | float) }}</td>
+          <td>{{ g.fecha_registro }}</td>
+          <td class="text-end">
+            <button class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#editModal{{ g.id }}">Editar</button>
+            <form method="POST" action="{{ url_for('inactivar_gasto_general', gasto_id=g.id, page=page, search=search, periodo=periodo_seleccionado) }}" class="d-inline">
+              <button type="submit" class="btn btn-sm btn-outline-danger">Inactivar</button>
+            </form>
+          </td>
+        </tr>
+
+        <!-- Modal edición -->
+        <div class="modal fade" id="editModal{{ g.id }}" tabindex="-1" aria-hidden="true">
+          <div class="modal-dialog">
+            <div class="modal-content">
+              <form method="POST" action="{{ url_for('editar_gasto_general', gasto_id=g.id, page=page, search=search, periodo=periodo_seleccionado) }}">
+                <div class="modal-header">
+                  <h5 class="modal-title">Editar gasto</h5>
+                  <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                  <div class="mb-3">
+                    <label class="form-label">Fecha</label>
+                    <input type="date" name="fecha_edit" class="form-control"
+                           min="{{ inicio_mes_str }}" max="{{ fin_mes_str }}" value="{{ g.fecha }}" required>
+                  </div>
+                  <div class="mb-3">
+                    <label class="form-label">Tipo de Registro</label>
+                    <select name="tipo_registro_edit" class="form-select" required>
+                      <option value="Fijo" {% if g.tipo_registro == "Fijo" %}selected{% endif %}>Fijo</option>
+                      <option value="Mensual" {% if g.tipo_registro == "Mensual" %}selected{% endif %}>Mensual</option>
+                    </select>
+                  </div>
+                  <div class="mb-3">
+                    <label class="form-label">Descripción</label>
+                    <input type="text" name="descripcion_edit" class="form-control" value="{{ g.descripcion }}" required>
+                  </div>
+                  <div class="mb-3">
+                    <label class="form-label">Categoría</label>
+                    <select name="categoria_id_edit" class="form-select" required>
+                      {% for cat in categorias %}
+                        <option value="{{ cat.id }}" {% if cat.id == g.categoria_id %}selected{% endif %}>
+                          {{ cat.nombre }}{% if cat.es_unica %} (única por mes){% endif %}
+                        </option>
+                      {% endfor %}
+                    </select>
+                  </div>
+                  <div class="mb-3">
+                    <label class="form-label">Valor</label>
+                    <input type="number" step="0.01" min="0" name="valor_edit" class="form-control" value="{{ g.valor }}" required>
+                  </div>
+                </div>
+                <div class="modal-footer">
+                  <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                  <button type="submit" class="btn btn-primary">Guardar</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+        <!-- Fin modal -->
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Paginación -->
+  <nav aria-label="Paginación">
+    <ul class="pagination justify-content-center">
+      <li class="page-item {% if page <= 1 %}disabled{% endif %}">
+        <a class="page-link" href="{{ url_for('gastos_generales_page', page=page-1, search=search, periodo=periodo_seleccionado) }}">Anterior</a>
+      </li>
+      <li class="page-item disabled">
+        <span class="page-link">Página {{ page }} de {{ total_pages }}</span>
+      </li>
+      <li class="page-item {% if page >= total_pages %}disabled{% endif %}">
+        <a class="page-link" href="{{ url_for('gastos_generales_page', page=page+1, search=search, periodo=periodo_seleccionado) }}">Siguiente</a>
+      </li>
+    </ul>
+  </nav>
+
+  {% endif %}
+</div>
+
+<!-- Validación rápida en frontend para fechas dentro del período -->
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+  const fechaInputs = document.querySelectorAll('input[type="date"][name="fecha"], input[type="date"][name="fecha_edit"]');
+  fechaInputs.forEach((fechaInput) => {
+    fechaInput.addEventListener("change", function() {
+      if (!fechaInput.value) return;
+      const min = new Date(fechaInput.min);
+      const max = new Date(fechaInput.max);
+      const val = new Date(fechaInput.value);
+      if (val < min || val > max) {
+        alert("La fecha debe estar dentro del período seleccionado.");
+        fechaInput.value = "";
+      }
+    });
+  });
+});
+</script>
+{% endblock %}

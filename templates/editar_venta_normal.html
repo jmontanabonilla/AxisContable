@@ -1,0 +1,126 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container py-3">
+
+  <!-- Encabezado -->
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h2 class="mb-0">Editar venta</h2>
+    <a href="{{ url_for('ventas_page') }}" class="btn btn-outline-secondary">Volver a ventas</a>
+  </div>
+
+  <!-- Formulario de edición -->
+  <div class="card mb-4">
+    <div class="card-body">
+      <form method="POST" class="row g-3" id="form-editar-venta">
+
+        <!-- Fecha de emisión -->
+        <div class="col-md-4">
+          <label class="form-label">Fecha de emisión</label>
+          <input type="date" name="fecha_emision" class="form-control"
+                 value="{{ fecha_emision_str }}"
+                 min="{{ fecha_inicio }}" max="{{ fecha_fin }}"
+                 {% if venta.VentaCerrada %}disabled{% endif %} required>
+        </div>
+
+        <!-- Total de venta -->
+        <div class="col-md-4">
+          <label class="form-label">Total de venta</label>
+          <input type="number" step="0.01" min="0.01" name="total_venta" id="total_venta"
+                 class="form-control" value="{{ venta.TotalVenta }}"
+                 {% if venta.VentaCerrada %}disabled{% endif %} required>
+        </div>
+
+        <!-- Medio de pago -->
+        <div class="col-md-4">
+          <label class="form-label">Medio de pago</label>
+          <select name="medio_pago" class="form-select" {% if venta.VentaCerrada %}disabled{% endif %} required>
+            <option value="">Seleccione...</option>
+            <option value="Efectivo" {% if venta.MedioPago == "Efectivo" %}selected{% endif %}>Efectivo</option>
+            <option value="Transferencia" {% if venta.MedioPago == "Transferencia" %}selected{% endif %}>Transferencia</option>
+          </select>
+        </div>
+
+        <!-- Resumen visual -->
+        <div class="col-md-12">
+          <div class="alert alert-secondary alert-fixed mt-2">
+            <div class="row text-center">
+              <div class="col-md-4">
+                <strong>Subtotal:</strong><br>
+                <span id="pv-subtotal">$0</span>
+              </div>
+              <div class="col-md-4">
+                <strong>Impuestos:</strong><br>
+                <span id="pv-impuestos">$0</span>
+              </div>
+              <div class="col-md-4">
+                <strong>Total:</strong><br>
+                <span id="pv-total">$0</span>
+              </div>
+            </div>
+            <small class="text-muted d-block mt-2 text-center">
+              <strong>Nota:</strong> Este resumen es solo visual. El sistema recalcula subtotal e impuestos al guardar, usando el IVA parametrizado.
+            </small>
+          </div>
+        </div>
+
+        <!-- Estado + Botones -->
+        <div class="col-md-12 d-flex justify-content-between align-items-center">
+          <!-- Estado -->
+          <div>
+            {% if venta.VentaCerrada %}
+              <span class="badge bg-danger">Estado: Cerrada</span>
+            {% else %}
+              <span class="badge bg-success">Estado: Abierta</span>
+            {% endif %}
+          </div>
+
+          <!-- Botones -->
+          <div>
+            {% if not venta.VentaCerrada %}
+              <button type="submit" class="btn btn-primary" name="accion" value="editar">Guardar cambios</button>
+              <button type="submit" class="btn btn-success ms-2" name="accion" value="cerrar">Cerrar venta</button>
+            {% endif %}
+          </div>
+        </div>
+
+      </form>
+    </div>
+  </div>
+
+</div>
+
+<!-- Script: cálculo visual -->
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+  const totalInput = document.getElementById("total_venta");
+  const pvSubtotal = document.getElementById("pv-subtotal");
+  const pvImpuestos = document.getElementById("pv-impuestos");
+  const pvTotal = document.getElementById("pv-total");
+
+  const IVA_PORCENTAJE = 19.0;
+
+  function formatCurrency(n) {
+    try {
+      return new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 2 }).format(n || 0);
+    } catch(e) {
+      return "$" + (n || 0).toFixed(2);
+    }
+  }
+
+  function updatePreview() {
+    const total = parseFloat(totalInput?.value || "0");
+    const impuestos = +(total * (IVA_PORCENTAJE / 100)).toFixed(2);
+    const subtotal = +(total - impuestos).toFixed(2);
+
+    pvSubtotal.textContent = formatCurrency(subtotal);
+    pvImpuestos.textContent = formatCurrency(impuestos);
+    pvTotal.textContent = formatCurrency(total);
+  }
+
+  updatePreview();
+  if (totalInput) {
+    totalInput.addEventListener("input", updatePreview);
+  }
+});
+</script>
+{% endblock %}

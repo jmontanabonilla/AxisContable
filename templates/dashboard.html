@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container-fluid">
+  <!-- Título -->
+  <h2 class="mb-4">Panel Principal</h2>
+
+  <!-- Selector de período -->
+  <form method="GET" class="mb-4">
+    <label class="form-label">Período a consultar</label>
+    <select name="periodo" class="form-select" onchange="this.form.submit()">
+      {% for p in periodos_disponibles %}
+        <option value="{{ p.valor }}" {% if p.valor == periodo_seleccionado %}selected{% endif %}>
+          {{ p.nombre }}
+        </option>
+      {% endfor %}
+    </select>
+  </form>
+
+  <!-- Totales -->
+  <div class="row mb-4">
+    <div class="col-md-4">
+      <div class="card text-center shadow-sm border-success">
+        <div class="card-body">
+          <i class="bi bi-cash-stack fs-2 text-success"></i>
+          <h5 class="card-title text-success">Ventas</h5>
+          <p class="fw-bold fs-4">${{ "{:,.2f}".format(totales.ventas) }}</p>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-4">
+      <div class="card text-center shadow-sm border-danger">
+        <div class="card-body">
+          <i class="bi bi-cart-dash fs-2 text-danger"></i>
+          <h5 class="card-title text-danger">Gastos</h5>
+          <p class="fw-bold fs-4">${{ "{:,.2f}".format(totales.gastos) }}</p>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-4">
+      <div class="card text-center shadow-sm border-info">
+        <div class="card-body">
+          <i class="bi bi-receipt fs-2 text-info"></i>
+          <h5 class="card-title text-info">Facturas</h5>
+          <p class="fw-bold fs-4">${{ "{:,.2f}".format(totales.facturas) }}</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Gráfico comparativo -->
+  <div class="card shadow-sm">
+    <div class="card-body">
+      <h5 class="card-title mb-3">Comparativo anual</h5>
+      <canvas id="graficoAnual" style="min-height:400px;"></canvas>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+  const ctx = document.getElementById('graficoAnual').getContext('2d');
+  new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: {{ meses|tojson }},
+      datasets: [
+        { label: 'Ventas', data: {{ datos_ventas|tojson }}, backgroundColor: 'rgba(40,167,69,0.6)' },
+        { label: 'Gastos', data: {{ datos_gastos|tojson }}, backgroundColor: 'rgba(220,53,69,0.6)' },
+        { label: 'Facturas', data: {{ datos_facturas|tojson }}, backgroundColor: 'rgba(23,162,184,0.6)' }
+      ]
+    },
+    options: {
+      responsive: true,
+      plugins: {
+        legend: { position: 'top' }
+      },
+      scales: {
+        y: {
+          beginAtZero: true,
+          ticks: {
+            callback: function(value) {
+              return '$' + value.toLocaleString();
+            }
+          }
+        }
+      }
+    }
+  });
+</script>
+{% endblock %}

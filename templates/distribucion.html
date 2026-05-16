@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container py-4">
+  <h2 class="mb-4">Distribución mensual</h2>
+
+  <form method="POST" class="row g-3">
+    <div class="col-md-6">
+      <label class="form-label"><strong>Año</strong></label>
+      <input type="number" name="anio" value="{{ anio }}" class="form-control" required>
+    </div>
+    <div class="col-md-6">
+      <label class="form-label"><strong>Mes</strong></label>
+      <input type="number" name="mes" value="{{ mes }}" min="1" max="12" class="form-control" required>
+    </div>
+
+    <div class="col-md-4">
+      <label class="form-label"><strong>Ventas (%)</strong></label>
+      <input type="number" step="0.01" name="ventas_pct"
+             class="form-control"
+             value="{{ distribucion[0] if distribucion else '' }}" required>
+    </div>
+    <div class="col-md-4">
+      <label class="form-label"><strong>Gastos (%)</strong></label>
+      <input type="number" step="0.01" name="gastos_pct"
+             class="form-control"
+             value="{{ distribucion[1] if distribucion else '' }}" required>
+    </div>
+    <div class="col-md-4">
+      <label class="form-label"><strong>Facturas (%)</strong></label>
+      <input type="number" step="0.01" name="facturas_pct"
+             class="form-control"
+             value="{{ distribucion[2] if distribucion else '' }}" required>
+    </div>
+
+    <div class="col-12 d-flex justify-content-end mt-3">
+      <button type="submit" class="btn btn-primary">Guardar</button>
+    </div>
+  </form>
+
+  {% if valores %}
+  <div class="mt-5">
+    <h4>Resultados calculados</h4>
+    <table class="table table-striped table-hover align-middle">
+      <thead class="table-light">
+        <tr>
+          <th>Concepto</th>
+          <th>Porcentaje</th>
+          <th>Valor</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Ventas registradas</td>
+          <td>{{ distribucion[0] }}%</td>
+          <td>${{ "{:,.2f}".format(valores.ventas) }}</td>
+        </tr>
+        <tr>
+          <td>Gastos del mes</td>
+          <td>{{ distribucion[1] }}%</td>
+          <td>${{ "{:,.2f}".format(valores.gastos) }}</td>
+        </tr>
+        <tr>
+          <td>Facturas registradas</td>
+          <td>{{ distribucion[2] }}%</td>
+          <td>${{ "{:,.2f}".format(valores.facturas) }}</td>
+        </tr>
+        <tr class="table-info">
+          <td><strong>Total</strong></td>
+          <td>100%</td>
+          <td><strong>${{ "{:,.2f}".format(tope_mensual) }}</strong></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

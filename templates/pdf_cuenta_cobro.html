@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Cuenta de Cobro</title>
+  <style>
+    body { font-family: Arial, sans-serif; font-size: 12pt; margin: 20px; }
+    .encabezado { display: flex; justify-content: space-between; margin-bottom: 10px; }
+    .propietario, .empresa, .suma, .concepto { text-align: center; margin-bottom: 20px; }
+    .firma { text-align: left; margin-top: 40px; }
+    table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+    th, td { border: 1px solid #000; padding: 6px; }
+    th { font-weight: bold; text-align: center; }
+    td { text-align: center; }
+    .valores { text-align: right; }
+  </style>
+</head>
+<body>
+
+{% if not venta.VentaCerrada %}
+  <div style="border: 2px dashed orange; padding: 10px; text-align: center; font-weight: bold; color: #d35400; margin-bottom: 20px;">
+    ⚠️ BORRADOR - Esta cuenta de cobro aún no ha sido cerrada oficialmente.
+  </div>
+{% endif %}
+
+<!-- Fecha y ciudad -->
+<p><strong>{{ propietario['CIUDAD'] }} {{ venta.FechaEmision }}</strong></p><br>
+
+<!-- Título -->
+<h3 style="text-align:center;">CUENTA DE COBRO</h3>
+<p style="text-align:center;">
+  <strong>Número Documento:</strong> {{ "%04d"|format(venta.NumeroDocumento|int) }}
+</p><br>
+
+<!-- Información del cliente receptor -->
+<div class="empresa">
+  <h4 style="margin:0; padding:0;"><strong>{{ cliente.RazonSocial }}</strong></h4>
+  <p style="margin:2px 0;">
+    <strong>Número de Identificación:</strong> {{ cliente.NumeroIdentificacion }}<br>
+    <strong>Dirección:</strong> {{ cliente.Direccion }}<br>
+    <strong>Teléfono:</strong> {{ cliente.Telefono }}<br>
+    <strong>Correo:</strong> {{ cliente.Correo }}
+  </p>
+</div>
+
+<!-- Datos del propietario -->
+<div class="propietario">
+  <strong>DEBE A:</strong><br>
+  <strong>{{ propietario['NOMBRE'] }}</strong><br>
+  <strong>CC:</strong> {{ propietario['IDENTIFICACION'] }}<br>
+  <strong>Dirección:</strong> {{ propietario['DIRECCION'] }}<br>
+  <strong>Teléfono:</strong> {{ propietario['TELEFONO'] }}<br>
+  <strong>Correo:</strong> {{ propietario['CORREO'] }}<br><br>
+  <strong>Actividad Económica:</strong> {{ propietario['ACTIVIDAD_ECONOMICA'] }}
+</div>
+
+<!-- Total en letras y números -->
+<div class="suma">
+  <p><strong>LA SUMA DE:</strong><br>
+     {{ total_letras }}<br>
+     (${{ "{:,.0f}".format(total) }})
+  </p>
+</div>
+
+<!-- Concepto -->
+<div class="concepto">
+  <p><strong>POR CONCEPTO DE:</strong></p>
+</div>
+
+<!-- Tabla de detalles -->
+<table>
+  <thead>
+    <tr>
+      <th>Descripción</th>
+      <th>Cantidad</th>
+      <th>Valor Unitario</th>
+      <th>Valor Total Unitario</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for d in detalles %}
+    <tr>
+      <td>{{ d.Descripcion }}</td>
+      <td>{{ "{:.0f}".format(d.Cantidad) }}</td>
+      <td class="valores">${{ "{:,.2f}".format(d.ValorUnitario) }}</td>
+      <td class="valores">${{ "{:,.2f}".format(d.ValorTotalUnitario) }}</td>
+    </tr>
+    {% endfor %}
+    <tr>
+      <td colspan="3" style="text-align:center;"><strong>Total general</strong></td>
+      <td class="valores"><strong>${{ "{:,.2f}".format(total) }}</strong></td>
+    </tr>
+  </tbody>
+</table>
+
+<!-- Firma -->
+<div class="firma">
+  <p>Atentamente,</p>
+  {% if firma_rel_path %}
+    <img src="{{ firma_rel_path }}" alt="Firma" style="height:80px; margin-bottom:-10px;"><br>
+  {% endif %}
+  <p style="margin-top:0;">________________________</p>
+  <strong>{{ propietario['NOMBRE'] }}</strong><br>
+  CC: {{ propietario['IDENTIFICACION'] }}
+</div>
+
+</body>
+</html>

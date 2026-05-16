@@ -1,0 +1,296 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container-fluid">
+
+  <!-- Encabezado -->
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h2 class="mb-0">Editar Inventario</h2>
+    <a href="{{ url_for('inventarios_page') }}" class="btn btn-outline-secondary">Volver</a>
+  </div>
+
+  <!-- Datos del producto -->
+  <div class="card mb-4">
+    <div class="card-body row text-center">
+      <div class="col-md-2"><strong>Categoría:</strong><br>{{ producto[5] or 'Sin categoría' }}</div>
+      <div class="col-md-2"><strong>SKU:</strong><br>{{ producto[2] }}</div>
+      <div class="col-md-3"><strong>Nombre:</strong><br>{{ producto[1] }}</div>
+      <div class="col-md-3"><strong>Código de Barras:</strong><br>{{ producto[3] }}</div>
+      <div class="col-md-2"><strong>Costo:</strong><br>${{ "%.2f"|format(producto[4]) }}</div>
+    </div>
+    <div class="card-footer text-end">
+      <button type="button" class="btn btn-sm btn-outline-primary"
+              data-bs-toggle="modal" data-bs-target="#modalEditarProducto">
+        Editar Producto
+      </button>
+    </div>
+  </div>
+
+  <!-- Stock total -->
+  <div class="mb-3">
+    <span id="total_stock_badge" class="badge bg-primary fs-6 fw-bold">
+      Stock total: {{ total_stock }}
+    </span>
+  </div>
+
+  <!-- Registrar nuevo lote -->
+  <div class="card mb-4">
+    <div class="card-header d-flex justify-content-between align-items-center">
+      <strong>Agregar nuevo lote</strong>
+
+      <!-- Checkbox permitir sin vencimiento -->
+      <div class="form-check form-switch">
+        <input class="form-check-input" type="checkbox" id="permitir_sin_vencimiento">
+        <label class="form-check-label" for="permitir_sin_vencimiento">Sin fecha de vencimiento
+        </label>
+      </div>
+    </div>
+
+    <div class="card-body">
+      <form method="POST"
+            action="{{ url_for('agregar_lote', inventario_id=producto[0]) }}"
+            class="row g-3" id="form_nuevo_lote">
+
+        <div class="col-md-4">
+          <label class="form-label">Número de Lote</label>
+          <input type="text" name="numero_lote" class="form-control" required>
+        </div>
+
+        <div class="col-md-4">
+          <label class="form-label">Cantidad</label>
+          <input type="number" name="cantidad" class="form-control" min="1" required>
+        </div>
+
+        <div class="col-md-4">
+          <label class="form-label">Fecha de Vencimiento</label>
+          <input type="date" name="fecha_vencimiento" id="fecha_vencimiento" class="form-control" required>
+        </div>
+
+        <div class="col-12 text-end">
+          <button type="submit" class="btn btn-success">Agregar Lote</button>
+        </div>
+
+      </form>
+    </div>
+  </div>
+
+  <!-- Tabla de lotes -->
+  {% if lotes %}
+  <div class="table-responsive">
+    <table class="table table-striped table-hover align-middle">
+      <thead class="table-light">
+        <tr>
+          <th>#</th>
+          <th>Número de Lote</th>
+          <th>Cantidad</th>
+          <th>Fecha Vencimiento</th>
+          <th>Estado</th>
+          <th class="text-end">Acciones</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for lote in lotes %}
+        <tr>
+          <td>{{ loop.index }}</td>
+          <td>{{ lote[1] }}</td>
+          <td>{{ lote[2] }}</td>
+          <td>{{ lote[3] or '—' }}</td>
+          <td>{{ lote[4] }}</td>
+          <td class="text-end">
+            <button type="button"
+                    class="btn btn-sm btn-outline-primary btn-editar-lote"
+                    data-lote-id="{{ lote[0] }}"
+                    data-inventario-id="{{ producto[0] }}">
+              Editar
+            </button>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="alert alert-info text-center">
+    No hay lotes registrados para este producto.
+  </div>
+  {% endif %}
+
+</div>
+
+<!-- Modal Editar Producto -->
+<div class="modal fade" id="modalEditarProducto" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <form method="POST" action="{{ url_for('editar_inventario', inventario_id=producto[0]) }}">
+        <div class="modal-header">
+          <h5 class="modal-title">Editar Producto</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+
+        <div class="modal-body row g-3">
+
+          <div class="col-md-6">
+            <label class="form-label">Nombre del Producto</label>
+            <input type="text" name="nombre_edit" class="form-control" value="{{ producto[1] }}" required>
+          </div>
+
+          <div class="col-md-6">
+            <label class="form-label">SKU</label>
+            <input type="text" name="sku_edit" class="form-control" value="{{ producto[2] }}" required>
+          </div>
+
+          <div class="col-md-6">
+            <label class="form-label">Código de Barras</label>
+            <input type="text" name="codigo_barras_edit" class="form-control" value="{{ producto[3] }}" required>
+          </div>
+
+          <div class="col-md-6">
+            <label class="form-label">Costo</label>
+            <input type="number" step="0.01" name="costo_edit" class="form-control" value="{{ producto[4] }}" required>
+          </div>
+
+          <!-- SELECT CATEGORÍA -->
+          <div class="col-md-12">
+            <label class="form-label">Categoría</label>
+            <select name="categoria_edit" class="form-select" required>
+              {% for c in categorias %}
+                <option value="{{ c[0] }}" {% if c[0] == producto[6] %}selected{% endif %}>
+                  {{ c[1] }}
+                </option>
+              {% endfor %}
+            </select>
+          </div>
+
+        </div>
+
+        <div class="modal-footer">
+          <button type="submit" class="btn btn-primary">Guardar Cambios</button>
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+        </div>
+
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Editar Lote -->
+<div class="modal fade" id="modalEditarLote" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <form id="formEditarLote" method="POST">
+        <div class="modal-header">
+          <h5 class="modal-title">Editar Lote</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+
+        <div class="modal-body">
+          <input type="hidden" name="lote_id" id="lote_id">
+
+          <div class="mb-3">
+            <label class="form-label">Número de Lote</label>
+            <input type="text" name="numero_lote_edit" id="numero_lote_edit" class="form-control" required>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label">Cantidad</label>
+            <input type="number" name="cantidad_edit" id="cantidad_edit" class="form-control" min="1" required>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label">Fecha de Vencimiento</label>
+            <input type="date" name="fecha_vencimiento_edit" id="fecha_vencimiento_edit" class="form-control">
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button type="submit" class="btn btn-primary">Guardar Cambios</button>
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+        </div>
+
+      </form>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+
+  /* -------------------------
+     Checkbox sin vencimiento
+  --------------------------*/
+  const checkbox = document.getElementById("permitir_sin_vencimiento");
+  const fechaInput = document.getElementById("fecha_vencimiento");
+
+  checkbox.addEventListener("change", () => {
+    if (checkbox.checked) {
+      fechaInput.removeAttribute("required");
+      fechaInput.value = "";
+      fechaInput.disabled = true;
+    } else {
+      fechaInput.setAttribute("required", "required");
+      fechaInput.disabled = false;
+    }
+  });
+
+  /* -------------------------
+     Recalcular stock
+  --------------------------*/
+  const totalStockBadge = document.getElementById("total_stock_badge");
+
+  function recalcularStock() {
+    let total = 0;
+    document.querySelectorAll("tbody tr").forEach(tr => {
+      const tdCantidad = tr.querySelector("td:nth-child(3)");
+      if (tdCantidad) {
+        const val = parseFloat(tdCantidad.textContent || "0");
+        total += isNaN(val) ? 0 : val;
+      }
+    });
+    totalStockBadge.textContent = `Stock total: ${total}`;
+  }
+
+  recalcularStock();
+
+  /* -------------------------
+     Modal editar lote
+  --------------------------*/
+  const modalEditarLote = new bootstrap.Modal(document.getElementById("modalEditarLote"));
+  const formEditarLote = document.getElementById("formEditarLote");
+
+  document.querySelectorAll(".btn-editar-lote").forEach(btn => {
+    btn.addEventListener("click", async () => {
+      const loteId = btn.dataset.loteId;
+      const inventarioId = btn.dataset.inventarioId;
+
+      try {
+        const response = await fetch(`/inventarios/editar_lote/${loteId}/${inventarioId}`, {
+          credentials: "include"
+        });
+
+        if (!response.ok) {
+          alert("Error al cargar el lote.");
+          return;
+        }
+
+        const lote = await response.json();
+
+        document.getElementById("lote_id").value = lote.id;
+        document.getElementById("numero_lote_edit").value = lote.numero_lote;
+        document.getElementById("cantidad_edit").value = lote.cantidad;
+        document.getElementById("fecha_vencimiento_edit").value = lote.fecha_vencimiento;
+
+        formEditarLote.action = `/inventarios/editar_lote/${loteId}/${inventarioId}`;
+        modalEditarLote.show();
+
+      } catch (err) {
+        console.error(err);
+        alert("No se pudo cargar la información del lote.");
+      }
+    });
+  });
+
+});
+</script>
+{% endblock %}

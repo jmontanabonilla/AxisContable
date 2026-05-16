@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container py-4" style="max-width: 500px;">
+  <h2 class="mb-4">Cambiar contraseña</h2>
+  <form method="POST" class="row g-3">
+    <div class="col-md-12">
+      <label class="form-label">Nueva contraseña</label>
+      <input type="password" name="nueva" class="form-control" required>
+    </div>
+    <div class="col-md-12">
+      <label class="form-label">Confirmar nueva contraseña</label>
+      <input type="password" name="confirmar" class="form-control" required>
+    </div>
+
+    {% if error %}
+      <div class="alert alert-danger">{{ error }}</div>
+    {% endif %}
+
+    <div class="col-12">
+      <button type="submit" class="btn btn-primary w-100">Guardar</button>
+    </div>
+  </form>
+</div>
+{% endblock %}
