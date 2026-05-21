@@ -1,14 +1,15 @@
 # app.py
 # ---------------- IMPORTS ----------------
-from flask import Flask, render_template, request, redirect, url_for, session, flash, g,make_response, jsonify
+from flask import Flask, render_template, request, redirect, url_for, session, flash, g,make_response, jsonify, Response, abort
 from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import datetime, timedelta
 from db import get_connection, query_one, query_all, exec_sql
-from utils import restar_meses,numero_a_letras,rango_mes,format_date_for_input
+from utils import restar_meses,numero_a_letras,rango_mes,format_date_for_input,generar_cufe_simulado,generar_qr_base64
 from dateutil.relativedelta import relativedelta
 from weasyprint import HTML
 from num2words import num2words
 from decimal import Decimal
+import hashlib
 import math
 import functools
 import pdfkit
@@ -2458,7 +2459,7 @@ def caja_registradora():
     if "user_id" not in session:
         return redirect(url_for("login"))
 
-    # 🔹 Tipos de documento activos (usa 'Tipo' en lugar de 'TipoDocumento')
+    # Tipos de documento activos (usa 'Tipo' en lugar de 'TipoDocumento')
     tipos_documento = query_all("""
         SELECT Id, Tipo, Prefijo, ValorActual
         FROM dbo.Consecutivos
@@ -2466,7 +2467,7 @@ def caja_registradora():
         ORDER BY Tipo
     """)
 
-    # 🔹 Categorías con productos activos
+    #  Categorías con productos activos
     categorias = query_all("""
         SELECT c.Id,
                c.NombreCategoria,
@@ -2481,7 +2482,7 @@ def caja_registradora():
         ORDER BY c.NombreCategoria
     """)
 
-    # 🔹 Medios de pago disponibles
+    # Medios de pago disponibles
     medios_pago = ["EFECTIVO", "DEBITO", "CREDITO", "TRANSFERENCIA", "OTRO"]
 
     return render_template(
@@ -2518,9 +2519,28 @@ def productos_por_categoria(categoria_id):
     ]
     return jsonify(data)
 
+@app.route("/api/producto/<codigo_barras>")
+def buscar_producto_por_codigo(codigo_barras):
+    producto = query_one("""
+        SELECT i.Id, i.NombreProducto, i.Costo,
+               ISNULL(SUM(d.Cantidad), 0) AS CantidadDisponible
+        FROM dbo.Inventarios AS i
+        LEFT JOIN dbo.DetalleInventario AS d ON d.InventarioId = i.Id AND d.Estado = 1
+        WHERE i.CodigoBarras = ? AND i.Estado = 1
+        GROUP BY i.Id, i.NombreProducto, i.Costo
+    """, (codigo_barras,))
+    
+    if not producto:
+        return jsonify({"error": "Producto no encontrado"}), 404
+
+    return jsonify({
+        "Id": producto[0],
+        "NombreProducto": producto[1],
+        "Costo": producto[2],
+        "CantidadDisponible": producto[3]
+    })
 
 # ---------------- RUTA: REGISTRAR VENTA ----------------
-
 @app.route("/ventas/caja_registradora/registrar", methods=["POST"])
 def registrar_venta_caja():
     if "user_id" not in session:
@@ -2528,19 +2548,27 @@ def registrar_venta_caja():
 
     data = request.get_json()
     tipo_documento_id = data.get("tipo_documento_id")
-    medio_pago = data.get("medio_pago")
-    cliente_identificacion = data.get("cliente_identificacion")
-    iva_porcentaje = Decimal(str(data.get("iva_porcentaje", 19)))
+    medio_pago = (data.get("medio_pago") or "").strip()
+    cliente_identificacion = (data.get("cliente_identificacion") or "").strip()
+    iva_porcentaje = Decimal(str(data.get("iva_porcentaje", 0)))
+    valor_recibido = Decimal(str(data.get("valor_recibido", 0)))
     items = data.get("items", [])
 
+    # ---------------- VALIDACIONES ----------------
     if not items:
         return jsonify({"ok": False, "msg": "No hay productos en la venta"}), 400
+    if not medio_pago:
+        return jsonify({"ok": False, "msg": "Debe seleccionar un medio de pago"}), 400
+    if not cliente_identificacion:
+        return jsonify({"ok": False, "msg": "Debe ingresar la identificación del cliente"}), 400
+    if valor_recibido <= 0:
+        return jsonify({"ok": False, "msg": "Debe ingresar el valor recibido"}), 400
 
     conn = get_connection()
     try:
         cursor = conn.cursor()
 
-        # 1️⃣ Consecutivo
+        # ---------------- 1️⃣ Consecutivo ----------------
         cursor.execute("""
             SELECT Id, Tipo, Prefijo, ValorActual
             FROM dbo.Consecutivos
@@ -2551,56 +2579,120 @@ def registrar_venta_caja():
             return jsonify({"ok": False, "msg": "Consecutivo no encontrado o inactivo"}), 400
 
         consec_id = consec[0]
-        tipo_doc = consec[1]
+        tipo_doc = consec[1].upper()
         prefijo = consec[2]
         numero_actual = consec[3] + 1
 
-        # 2️⃣ Cliente
-        cliente_id = None
-        if cliente_identificacion:
-            cursor.execute("""
-                SELECT Id
-                FROM dbo.Clientes
-                WHERE NumeroIdentificacion = ?
-            """, (cliente_identificacion,))
-            row = cursor.fetchone()
-            if row:
-                cliente_id = row[0]
+        es_documento_equivalente = (tipo_doc == "DOCUMENTO_EQUIVALENTE")
+        es_factura_electronica = (tipo_doc == "FACTURA_ELECTRONICA")
 
-        # 3️⃣ Totales
-        subtotal = Decimal("0")
+        # ---------------- 2️⃣ Cliente ----------------
+        cursor.execute("""
+            SELECT Id FROM dbo.Clientes
+            WHERE NumeroIdentificacion = ?
+        """, (cliente_identificacion,))
+        row = cursor.fetchone()
+        if not row:
+            return jsonify({
+                "ok": False,
+                "msg": "Cliente no encontrado. Regístrelo en el módulo de clientes antes de continuar."
+            }), 400
+        cliente_id = row[0]
+
+        # ---------------- 3️⃣ Validar stock ----------------
         for it in items:
-            subtotal += Decimal(str(it["cantidad"])) * Decimal(str(it["precio"]))
+            inventario_id = it["inventario_id"]
+            cantidad_solicitada = Decimal(str(it["cantidad"]))
 
+            cursor.execute("""
+                SELECT ISNULL(SUM(Cantidad), 0)
+                FROM dbo.DetalleInventario
+                WHERE InventarioId = ? AND ISNULL(Estado,0) = 1
+            """, (inventario_id,))
+            total_disponible = cursor.fetchone()[0]
+
+            if total_disponible < cantidad_solicitada:
+                return jsonify({
+                    "ok": False,
+                    "msg": f"Stock insuficiente para '{it['nombre']}'. Disponible: {total_disponible}, solicitado: {cantidad_solicitada}"
+                }), 400
+
+        # ---------------- 4️⃣ Totales ----------------
+        subtotal = sum(Decimal(str(it["cantidad"])) * Decimal(str(it["precio"])) for it in items)
         impuestos = (subtotal * iva_porcentaje / Decimal("100")).quantize(Decimal("1"))
         total = subtotal + impuestos
 
-        # 4️⃣ Insertar venta
+        if valor_recibido < total:
+            return jsonify({
+                "ok": False,
+                "msg": "El valor recibido no puede ser menor al total a pagar."
+            }), 400
+
+        # ---------------- 5️⃣ Validación Documento Equivalente ----------------
+        if es_documento_equivalente and total > Decimal("200000"):
+            return jsonify({
+                "ok": False,
+                "msg": "El Documento Equivalente solo aplica para ventas hasta $200.000 COP."
+            }), 400
+
+        # ---------------- 6️⃣ Simulación DIAN (solo FE) ----------------
+        if es_factura_electronica:
+            hoy = datetime.now()
+
+            venta_temp = {
+                "Subtotal": subtotal,
+                "Impuestos": impuestos,
+                "TotalVenta": total,
+                "NumeroDocumento": numero_actual,
+                "IdentificacionEmpresa": "SIMULADO",
+                "FechaEmision": hoy.date()
+            }
+
+            # CUFE simulado desde utils.py
+            cufe = generar_cufe_simulado(venta_temp, items)
+
+            # QR simulado desde utils.py
+            qr_data = f"https://dian.gov.co/qr?cufe={cufe}"
+            qr_base64 = generar_qr_base64(qr_data)
+
+            ambiente = "PRUEBAS"
+            numero_resolucion = "SIM-2024-0001"
+            fecha_resolucion = hoy.date()
+
+        else:
+            cufe = None
+            qr_base64 = None
+            ambiente = None
+            numero_resolucion = None
+            fecha_resolucion = None
+
+        # ---------------- 7️⃣ Insertar venta ----------------
         hoy = datetime.now()
         cursor.execute("""
             INSERT INTO dbo.Ventas
                 (NumeroDocumento, Prefijo, FechaEmision, HoraEmision,
                  Subtotal, Impuestos, TotalVenta, MedioPago,
                  UsuarioCreaId, FechaCreacion, Estado,
-                 ConsecutivoId, VentaCerrada)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 ConsecutivoId, VentaCerrada, TotalPagar,
+                 CUFE, QR, AmbienteDIAN, NumeroResolucion, FechaResolucion)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             numero_actual, prefijo, hoy.date(), hoy.time(),
             subtotal, impuestos, total, medio_pago,
             session["user_id"], hoy,
-            1,              # Estado = 1
-            consec_id,
-            1               # VentaCerrada = 1
+            1, consec_id, 1, valor_recibido,
+            cufe, qr_base64, ambiente, numero_resolucion, fecha_resolucion
         ))
 
         cursor.execute("SELECT @@IDENTITY")
         venta_id = cursor.fetchone()[0]
 
-        # 5️⃣ Detalle + descuento inventario
+        # ---------------- 8️⃣ Insertar detalle + FIFO ----------------
         for idx, it in enumerate(items, start=1):
             cantidad = Decimal(str(it["cantidad"]))
             precio = Decimal(str(it["precio"]))
             total_linea = cantidad * precio
+            inventario_id = it["inventario_id"]
 
             cursor.execute("""
                 INSERT INTO dbo.DetalleVenta
@@ -2611,16 +2703,42 @@ def registrar_venta_caja():
             """, (
                 venta_id, idx, it["nombre"],
                 cantidad, precio, total_linea,
-                1, it["inventario_id"], cliente_id
+                1, inventario_id, cliente_id
             ))
 
+            # FIFO
             cursor.execute("""
-                UPDATE dbo.DetalleInventario
-                SET Cantidad = Cantidad - ?
+                SELECT Id, Cantidad
+                FROM dbo.DetalleInventario
                 WHERE InventarioId = ? AND ISNULL(Estado,0) = 1
-            """, (cantidad, it["inventario_id"]))
+                ORDER BY
+                    CASE WHEN FechaVencimiento IS NULL THEN 1 ELSE 0 END,
+                    FechaVencimiento ASC
+            """, (inventario_id,))
+            lotes = cursor.fetchall()
 
-        # 6️⃣ Actualizar consecutivo
+            cantidad_restante = cantidad
+            for lote_id, disponible in lotes:
+                if cantidad_restante <= 0:
+                    break
+
+                disponible = Decimal(str(disponible))
+                if disponible >= cantidad_restante:
+                    cursor.execute("""
+                        UPDATE dbo.DetalleInventario
+                        SET Cantidad = Cantidad - ?
+                        WHERE Id = ?
+                    """, (cantidad_restante, lote_id))
+                    cantidad_restante = Decimal("0")
+                else:
+                    cursor.execute("""
+                        UPDATE dbo.DetalleInventario
+                        SET Cantidad = 0
+                        WHERE Id = ?
+                    """, (lote_id,))
+                    cantidad_restante -= disponible
+
+        # ---------------- 9️⃣ Actualizar consecutivo ----------------
         cursor.execute("""
             UPDATE dbo.Consecutivos
             SET ValorActual = ?
@@ -2635,7 +2753,12 @@ def registrar_venta_caja():
             "prefijo": prefijo,
             "numero": numero_actual,
             "tipo_documento": tipo_doc,
-            "total": float(total)
+            "total": float(total),
+            "valor_recibido": float(valor_recibido),
+            "cambio": float(valor_recibido - total),
+            "iva": float(impuestos),
+            "cufe": cufe,
+            "qr": qr_base64
         })
 
     except Exception as e:
@@ -2645,21 +2768,330 @@ def registrar_venta_caja():
         conn.close()
 
 
-# ---------------- RUTA: HISTORIAL ----------------
 
+# ---------------------- HISTORIAL DE VENTAS ----------------------
 @app.route("/ventas/historial")
 def historial_ventas():
     if "user_id" not in session:
         return redirect(url_for("login"))
 
-    ventas = query_all("""
-        SELECT Id, FechaEmision, Prefijo, NumeroDocumento, TotalVenta, MedioPago, Estado
-        FROM dbo.Ventas
-        WHERE ISNULL(Estado,0) = 1
-        ORDER BY FechaEmision DESC, Id DESC
-    """)
+    search = request.args.get("search", "").strip()
+    page = int(request.args.get("page", 1))
+    per_page = 10
+    offset = (page - 1) * per_page
 
-    return render_template("historial_ventas.html", ventas=ventas)
+    # Consulta base con JOIN para obtener el tipo de documento
+    base_query = """
+        FROM dbo.Ventas v
+        JOIN dbo.Consecutivos c ON c.Id = v.ConsecutivoId
+        WHERE ISNULL(v.Estado,0) = 1
+    """
+
+    params = []
+    if search:
+        base_query += " AND (CAST(v.NumeroDocumento AS VARCHAR) LIKE ? OR v.Prefijo LIKE ?)"
+        params = [f"%{search}%", f"%{search}%"]
+
+    # Total de registros
+    total_registros = query_one(f"SELECT COUNT(*) {base_query}", params)[0]
+    total_pages = (total_registros + per_page - 1) // per_page
+
+    # Consulta paginada
+    ventas = query_all(f"""
+        SELECT 
+            v.Id,
+            v.FechaEmision,
+            v.Prefijo,
+            v.NumeroDocumento,
+            v.TotalVenta,
+            v.MedioPago,
+            v.Estado,
+            c.Tipo AS TipoDocumento
+        {base_query}
+        ORDER BY v.FechaEmision DESC, v.Id DESC
+        OFFSET ? ROWS FETCH NEXT ? ROWS ONLY
+    """, params + [offset, per_page])
+
+    return render_template(
+        "historial_ventas.html",
+        ventas=ventas,
+        page=page,
+        total_pages=total_pages,
+        total_registros=total_registros,
+        search=search
+    )
+
+
+
+# ---------------- ROUTE: GENERAR PDF DOCUMENTO EQUIVALENTE POS ----------------
+
+@app.route("/documento_equivalente/pdf/<int:venta_id>")
+def generar_pdf_documento_equivalente(venta_id):
+
+    # ============================
+    # 1. CONSULTAR CABECERA
+    # ============================
+    sql_cabecera = """
+        SELECT 
+            v.Id,
+            v.NumeroDocumento,
+            v.Prefijo,
+            v.FechaEmision,
+            v.HoraEmision,
+            v.Subtotal,
+            v.Impuestos,
+            v.TotalVenta,
+            v.MedioPago,
+            v.TotalPagar,
+
+            cli.RazonSocial,
+            cli.NumeroIdentificacion,
+            cli.Correo,
+            cli.Telefono,
+            cli.Direccion,
+            cli.Municipio,
+            cli.Departamento,
+
+            td.Codigo AS CodigoDIAN,
+            td.Descripcion AS TipoDIAN,
+
+            pn.NombreEmprendimiento,
+            pn.NombreEmpresario,
+            pn.IdentificacionEmpresa,
+            pn.DireccionEmpresa,
+            pn.CorreoEmpresa,
+            pn.CiudadEmpresa,
+            pn.RegimenFiscal,
+            pn.ResponsabilidadDIAN
+
+        FROM Ventas v
+        LEFT JOIN Consecutivos con ON v.ConsecutivoId = con.Id
+        LEFT JOIN TipoDocumentoDIAN td ON con.TipoDocumentoDIANId = td.Id
+
+        OUTER APPLY (
+            SELECT TOP 1
+                c.RazonSocial,
+                c.NumeroIdentificacion,
+                c.Correo,
+                c.Telefono,
+                c.Direccion,
+                c.Municipio,
+                c.Departamento
+            FROM DetalleVenta dv
+            LEFT JOIN Clientes c ON dv.ClienteId = c.Id
+            WHERE dv.VentaId = v.Id
+        ) cli
+
+        CROSS APPLY (
+            SELECT
+                MAX(CASE WHEN NombreParametro = 'NOMBRE NEGOCIO' THEN ValorParametro END) AS NombreEmprendimiento,
+                MAX(CASE WHEN NombreParametro = 'NOMBRE' THEN ValorParametro END) AS NombreEmpresario,
+                MAX(CASE WHEN NombreParametro = 'IDENTIFICACION' THEN ValorParametro END) AS IdentificacionEmpresa,
+                MAX(CASE WHEN NombreParametro = 'DIRECCION' THEN ValorParametro END) AS DireccionEmpresa,
+                MAX(CASE WHEN NombreParametro = 'CORREO' THEN ValorParametro END) AS CorreoEmpresa,
+                MAX(CASE WHEN NombreParametro = 'CIUDAD' THEN ValorParametro END) AS CiudadEmpresa,
+                MAX(CASE WHEN NombreParametro = 'RegimenFiscal' THEN ValorParametro END) AS RegimenFiscal,
+                MAX(CASE WHEN NombreParametro = 'ResponsabilidadDIAN' THEN ValorParametro END) AS ResponsabilidadDIAN
+            FROM ParametrosNegocio
+        ) pn
+
+        WHERE v.Id = ?
+    """
+
+    row = query_one(sql_cabecera, (venta_id,))
+    if not row:
+        abort(404, "Venta no encontrada.")
+
+    # Convertir pyodbc.Row → dict
+    venta = {col[0]: row[i] for i, col in enumerate(row.cursor_description)}
+
+    # Validación DIAN
+    if venta["CodigoDIAN"] != "DEQ":
+        abort(400, "Este documento no es un Documento Equivalente POS.")
+
+    # ============================
+    # 2. CONSULTAR DETALLE
+    # ============================
+    sql_detalle = """
+        SELECT Descripcion, Cantidad, ValorUnitario, ValorTotalUnitario
+        FROM DetalleVenta
+        WHERE VentaId = ?
+        ORDER BY NumeroLinea
+    """
+
+    rows = query_all(sql_detalle, (venta_id,))
+    if not rows:
+        abort(400, "La venta no tiene ítems registrados.")
+
+    detalles = [
+        {col[0]: r[i] for i, col in enumerate(r.cursor_description)}
+        for r in rows
+    ]
+
+    # ============================
+    # 3. FORMATEAR FECHA
+    # ============================
+    try:
+        locale.setlocale(locale.LC_TIME, 'es_CO.UTF-8')
+    except:
+        locale.setlocale(locale.LC_TIME, 'es_ES.UTF-8')
+
+    fecha = datetime.strptime(str(venta["FechaEmision"]), "%Y-%m-%d")
+    fecha_formateada = fecha.strftime("%d de %B de %Y")
+
+    # ============================
+    # 4. RENDERIZAR PDF
+    # ============================
+    html = render_template(
+        "pdf_documento_equivalente.html",
+        venta=venta,
+        detalles=detalles,
+        fecha_formateada=fecha_formateada
+    )
+
+    pdf = HTML(string=html, base_url=app.root_path).write_pdf()
+
+    response = make_response(pdf)
+    response.headers["Content-Type"] = "application/pdf"
+    response.headers["Content-Disposition"] = (
+        f"inline; filename=documento_equivalente_{venta_id}.pdf"
+    )
+
+    return response
+
+# ---------------- ROUTE: GENERAR PDF Facturas Ventas ----------------
+@app.route("/factura_electronica/pdf/<int:venta_id>")
+def generar_pdf_factura_electronica(venta_id):
+
+    # ============================
+    # 1. CONSULTAR CABECERA
+    # ============================
+    sql = """
+        SELECT 
+            v.Id,
+            v.NumeroDocumento,
+            v.Prefijo,
+            v.FechaEmision,
+            v.HoraEmision,
+            v.Subtotal,
+            v.Impuestos,
+            v.TotalVenta,
+            v.MedioPago,
+            v.TotalPagar,
+
+            v.CUFE,
+            v.QR,
+            v.AmbienteDIAN,
+            v.NumeroResolucion,
+            v.FechaResolucion,
+
+            cli.RazonSocial,
+            cli.NumeroIdentificacion,
+            cli.Correo,
+            cli.Telefono,
+            cli.Direccion,
+            cli.Municipio,
+            cli.Departamento,
+
+            pn.NombreEmprendimiento,
+            pn.NombreEmpresario,
+            pn.IdentificacionEmpresa,
+            pn.DireccionEmpresa,
+            pn.CorreoEmpresa,
+            pn.CiudadEmpresa,
+            pn.RegimenFiscal,
+            pn.ResponsabilidadDIAN
+
+        FROM Ventas v
+
+        OUTER APPLY (
+            SELECT TOP 1
+                c.RazonSocial,
+                c.NumeroIdentificacion,
+                c.Correo,
+                c.Telefono,
+                c.Direccion,
+                c.Municipio,
+                c.Departamento
+            FROM DetalleVenta dv
+            LEFT JOIN Clientes c ON dv.ClienteId = c.Id
+            WHERE dv.VentaId = v.Id
+        ) cli
+
+        CROSS APPLY (
+            SELECT
+                MAX(CASE WHEN NombreParametro = 'NOMBRE NEGOCIO' THEN ValorParametro END) AS NombreEmprendimiento,
+                MAX(CASE WHEN NombreParametro = 'NOMBRE' THEN ValorParametro END) AS NombreEmpresario,
+                MAX(CASE WHEN NombreParametro = 'IDENTIFICACION' THEN ValorParametro END) AS IdentificacionEmpresa,
+                MAX(CASE WHEN NombreParametro = 'DIRECCION' THEN ValorParametro END) AS DireccionEmpresa,
+                MAX(CASE WHEN NombreParametro = 'CORREO' THEN ValorParametro END) AS CorreoEmpresa,
+                MAX(CASE WHEN NombreParametro = 'CIUDAD' THEN ValorParametro END) AS CiudadEmpresa,
+                MAX(CASE WHEN NombreParametro = 'RegimenFiscal' THEN ValorParametro END) AS RegimenFiscal,
+                MAX(CASE WHEN NombreParametro = 'ResponsabilidadDIAN' THEN ValorParametro END) AS ResponsabilidadDIAN
+            FROM ParametrosNegocio
+        ) pn
+
+        WHERE v.Id = ?
+    """
+
+    row = query_one(sql, (venta_id,))
+    if not row:
+        abort(404, "Factura no encontrada.")
+
+    venta = {desc[0]: row[i] for i, desc in enumerate(row.cursor_description)}
+
+    # Validar que sea factura electrónica
+    if not venta["CUFE"]:
+        abort(400, "Esta venta no es una Factura Electrónica.")
+
+    # ============================
+    # 2. CONSULTAR DETALLE
+    # ============================
+    rows = query_all("""
+        SELECT Descripcion, Cantidad, ValorUnitario, ValorTotalUnitario
+        FROM DetalleVenta
+        WHERE VentaId = ?
+        ORDER BY NumeroLinea
+    """, (venta_id,))
+
+    detalles = [
+        {desc[0]: r[i] for i, desc in enumerate(r.cursor_description)}
+        for r in rows
+    ]
+
+    # ============================
+    # 3. FORMATEAR FECHA
+    # ============================
+    try:
+        locale.setlocale(locale.LC_TIME, 'es_CO.UTF-8')
+    except:
+        locale.setlocale(locale.LC_TIME, 'es_ES.UTF-8')
+
+    fecha = datetime.strptime(str(venta["FechaEmision"]), "%Y-%m-%d")
+    fecha_formateada = fecha.strftime("%d de %B de %Y")
+
+    # ============================
+    # 4. RENDERIZAR HTML
+    # ============================
+    html = render_template(
+        "pdf_factura_electronica.html",
+        venta=venta,
+        detalles=detalles,
+        fecha_formateada=fecha_formateada
+    )
+
+    # ============================
+    # 5. GENERAR PDF
+    # ============================
+    pdf = HTML(string=html, base_url=app.root_path).write_pdf()
+
+    response = make_response(pdf)
+    response.headers["Content-Type"] = "application/pdf"
+    response.headers["Content-Disposition"] = (
+        f"inline; filename=factura_electronica_{venta_id}.pdf"
+    )
+
+    return response
 
 
 # ---------------- ROUTES: INVENTARIOS ----------------
@@ -2671,7 +3103,7 @@ def inventarios_page():
 
     menu = get_menu_for_role(session["rol_id"])
 
-    # ---------------- CARGAR CATEGORÍAS ----------------
+    # CARGAR CATEGORÍAS
     categorias = query_all("""
         SELECT Id, NombreCategoria
         FROM CategoriasInventario
@@ -2679,20 +3111,21 @@ def inventarios_page():
         ORDER BY NombreCategoria
     """)
 
-    # ---------------- CREAR NUEVO PRODUCTO ----------------
+    # CREAR NUEVO PRODUCTO
     if request.method == "POST":
         nombre = (request.form.get("nombre") or "").strip()
         sku = (request.form.get("sku") or "").strip()
         codigo_barras = (request.form.get("codigo_barras") or "").strip()
         costo = (request.form.get("costo") or "").strip()
         categoria_id = request.form.get("categoria_id")
+
+        tiene_fecha_vencimiento = 1 if request.form.get("tieneFechaVencimiento") == "on" else 0
         activar_proyeccion = 1 if request.form.get("activar_proyeccion") else 0
 
         if not nombre or not sku or not codigo_barras or not costo or not categoria_id:
             flash("Todos los campos son obligatorios, incluida la categoría.", "danger")
             return redirect(url_for("inventarios_page"))
 
-        # Validar duplicado por SKU
         existe_sku = query_one("""
             SELECT Id FROM Inventarios 
             WHERE SKU = ? AND Estado = 1
@@ -2701,7 +3134,6 @@ def inventarios_page():
             flash("El SKU ya existe. No puede registrar el mismo producto dos veces.", "warning")
             return redirect(url_for("inventarios_page"))
 
-        # Validar duplicado por Código de Barras
         existe_cb = query_one("""
             SELECT Id FROM Inventarios 
             WHERE CodigoBarras = ? AND Estado = 1
@@ -2710,14 +3142,13 @@ def inventarios_page():
             flash("El código de barras ya existe.", "warning")
             return redirect(url_for("inventarios_page"))
 
-        # Insertar producto con categoría
         exec_sql("""
             INSERT INTO Inventarios 
-            (NombreProducto, SKU, CodigoBarras, Costo, Estado, FechaCreacion, UsuarioId, CategoriaInventarioId)
-            VALUES (?, ?, ?, ?, 1, GETDATE(), ?, ?)
-        """, (nombre, sku, codigo_barras, costo, session["usuario_id"], categoria_id))
+            (NombreProducto, SKU, CodigoBarras, Costo, Estado, FechaCreacion, UsuarioId, 
+             CategoriaInventarioId, TieneFechaVencimiento)
+            VALUES (?, ?, ?, ?, 1, GETDATE(), ?, ?, ?)
+        """, (nombre, sku, codigo_barras, costo, session["usuario_id"], categoria_id, tiene_fecha_vencimiento))
 
-        # Crear registro de proyección IA si aplica
         if activar_proyeccion:
             inventario_id = query_one("SELECT TOP 1 Id FROM Inventarios ORDER BY Id DESC")[0]
             exec_sql("""
@@ -2728,7 +3159,7 @@ def inventarios_page():
         flash("Producto registrado correctamente.", "success")
         return redirect(url_for("inventarios_page"))
 
-    # ---------------- BÚSQUEDA Y PAGINACIÓN ----------------
+    # BÚSQUEDA Y PAGINACIÓN
     page_size = 10
     try:
         page = int(request.args.get("page", 1))
@@ -2756,7 +3187,7 @@ def inventarios_page():
         page = total_pages
         offset = (page - 1) * page_size
 
-    # ---------------- CONSULTA PRINCIPAL ----------------
+    # CONSULTA PRINCIPAL
     rows = query_all(
         f"""
         SELECT I.Id, I.SKU, I.NombreProducto,
@@ -2764,7 +3195,8 @@ def inventarios_page():
                ISNULL(SUM(D.Cantidad), 0) AS Stock,
                I.Costo,
                ISNULL(P.StockOptimo, NULL) AS StockOptimo,
-               I.FechaCreacion
+               I.FechaCreacion,
+               I.TieneFechaVencimiento
         FROM Inventarios I
         LEFT JOIN CategoriasInventario C ON I.CategoriaInventarioId = C.Id
         LEFT JOIN DetalleInventario D 
@@ -2772,14 +3204,14 @@ def inventarios_page():
         LEFT JOIN ProyeccionInventario P 
             ON I.Id = P.InventarioId
         WHERE {where}
-        GROUP BY I.Id, I.SKU, I.NombreProducto, C.NombreCategoria, I.Costo, P.StockOptimo, I.FechaCreacion
+        GROUP BY I.Id, I.SKU, I.NombreProducto, C.NombreCategoria, 
+                 I.Costo, P.StockOptimo, I.FechaCreacion, I.TieneFechaVencimiento
         ORDER BY I.FechaCreacion DESC, I.Id DESC
         OFFSET ? ROWS FETCH NEXT ? ROWS ONLY
         """,
         tuple(params + [offset, page_size])
     )
 
-    # ---------------- CONSTRUCCIÓN DE DICCIONARIO ----------------
     productos = []
     total_stock = 0
 
@@ -2789,6 +3221,7 @@ def inventarios_page():
         precio_total = costo * stock
         proyeccion_ia = r[6] if r[6] is not None else "Sin datos"
         fecha_creacion = r[7].strftime("%Y-%m-%d %H:%M") if r[7] else ""
+        tiene_fecha_vencimiento = bool(r[8])
 
         total_stock += stock
 
@@ -2801,10 +3234,10 @@ def inventarios_page():
             "costo": costo,
             "precio_total": precio_total,
             "proyeccion_ia": proyeccion_ia,
-            "fecha_creacion": fecha_creacion
+            "fecha_creacion": fecha_creacion,
+            "tiene_fecha_vencimiento": tiene_fecha_vencimiento
         })
 
-    # ---------------- RENDERIZAR VISTA ----------------
     return render_template(
         "inventarios.html",
         menu=menu,
@@ -2839,20 +3272,30 @@ def editar_inventario(inventario_id):
 
     menu = get_menu_for_role(session["rol_id"])
 
-    # Obtener producto con nombre de categoría
-    producto = query_one("""
-    SELECT I.Id, I.NombreProducto, I.SKU, I.CodigoBarras, I.Costo,
-           C.NombreCategoria AS CategoriaNombre, I.CategoriaInventarioId
-    FROM Inventarios I
-    LEFT JOIN CategoriasInventario C ON I.CategoriaInventarioId = C.Id
-    WHERE I.Id = ? AND I.Estado = 1
+    row = query_one("""
+        SELECT I.Id, I.NombreProducto, I.SKU, I.CodigoBarras, I.Costo,
+               C.NombreCategoria AS CategoriaNombre, I.CategoriaInventarioId,
+               I.TieneFechaVencimiento
+        FROM Inventarios I
+        LEFT JOIN CategoriasInventario C ON I.CategoriaInventarioId = C.Id
+        WHERE I.Id = ? AND I.Estado = 1
     """, (inventario_id,))
 
-    if not producto:
+    if not row:
         flash("Producto no encontrado o inactivo.", "warning")
         return redirect(url_for("inventarios_page"))
 
-    # Cargar categorías
+    producto = {
+        "id": row[0],
+        "nombre": row[1],
+        "sku": row[2],
+        "codigo_barras": row[3],
+        "costo": row[4],
+        "categoria_nombre": row[5],
+        "categoria_id": row[6],
+        "tiene_fecha_vencimiento": bool(row[7])
+    }
+
     categorias = query_all("""
         SELECT Id, NombreCategoria
         FROM CategoriasInventario
@@ -2860,7 +3303,6 @@ def editar_inventario(inventario_id):
         ORDER BY NombreCategoria
     """)
 
-    # POST: actualizar datos del producto
     if request.method == "POST":
         nombre = (request.form.get("nombre_edit") or "").strip()
         sku = (request.form.get("sku_edit") or "").strip()
@@ -2872,7 +3314,6 @@ def editar_inventario(inventario_id):
             flash("Todos los campos del producto son obligatorios.", "danger")
             return redirect(url_for("editar_inventario", inventario_id=inventario_id))
 
-        # Validar SKU único
         existe_sku = query_one("""
             SELECT Id FROM Inventarios
             WHERE SKU = ? AND Id <> ? AND Estado = 1
@@ -2881,7 +3322,6 @@ def editar_inventario(inventario_id):
             flash("El SKU ya existe en otro producto.", "warning")
             return redirect(url_for("editar_inventario", inventario_id=inventario_id))
 
-        # Validar Código de Barras único
         existe_cb = query_one("""
             SELECT Id FROM Inventarios
             WHERE CodigoBarras = ? AND Id <> ? AND Estado = 1
@@ -2890,7 +3330,6 @@ def editar_inventario(inventario_id):
             flash("El código de barras ya existe en otro producto.", "warning")
             return redirect(url_for("editar_inventario", inventario_id=inventario_id))
 
-        # Actualizar producto
         exec_sql("""
             UPDATE Inventarios
             SET NombreProducto = ?, SKU = ?, CodigoBarras = ?, Costo = ?, 
@@ -2901,7 +3340,6 @@ def editar_inventario(inventario_id):
         flash("Producto actualizado correctamente.", "success")
         return redirect(url_for("editar_inventario", inventario_id=inventario_id))
 
-    # Lotes del producto
     lotes = query_all("""
         SELECT Id, NumeroLote, Cantidad, FechaVencimiento, Estado
         FROM DetalleInventario
@@ -2934,6 +3372,12 @@ def agregar_lote(inventario_id):
 
     if not numero_lote or not cantidad:
         flash("El número de lote y la cantidad son obligatorios.", "danger")
+        return redirect(url_for("editar_inventario", inventario_id=inventario_id))
+
+    # Validar regla de vencimiento según el producto
+    inv_row = query_one("SELECT TieneFechaVencimiento FROM Inventarios WHERE Id = ?", (inventario_id,))
+    if inv_row and inv_row[0] == 1 and not fecha_vencimiento:
+        flash("Este producto requiere fecha de vencimiento para sus lotes.", "danger")
         return redirect(url_for("editar_inventario", inventario_id=inventario_id))
 
     existe_lote = query_one("""
@@ -3005,6 +3449,8 @@ def editar_lote(lote_id, inventario_id):
 
     flash("Lote actualizado correctamente.", "success")
     return redirect(url_for("editar_inventario", inventario_id=inventario_id))
+
+
 
 
 # ---------------- ROUTES: CATEGORIAS INVENTARIO ----------------

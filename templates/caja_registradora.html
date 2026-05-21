@@ -4,6 +4,11 @@
 {% block content %}
 
 <div class="container-fluid">
+    
+    <div id="alertaCaja" class="alert alert-warning alert-dismissible fade show d-none text-center fw-bold" role="alert">
+        <span id="alertaCajaTexto"></span>
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
 
     <div class="d-flex justify-content-between align-items-center mb-4">
         <h2 class="fw-bold">Caja Registradora</h2>
@@ -23,16 +28,15 @@
 
                     <h5 class="fw-bold mb-3">Datos de la Venta</h5>
 
-                    <!-- Identificación del cliente -->
+                    <!-- Número de Identificación del cliente -->
                     <div class="mb-3">
-                        <label class="form-label">Identificación del Cliente</label>
-                        <input type="text" id="cliente_identificacion" class="form-control"
-                               placeholder="Número de identificación">
+                        <label class="form-label">Número de Identificación del Cliente</label>
+                        <input type="text" id="cliente_identificacion" class="form-control" placeholder="Número de Identificación del Cliente" required>
                     </div>
 
                     <!-- Tipo de Documento -->
                     <label for="tipo_documento" class="form-label">Tipo de Documento Factura</label>
-                        <select id="tipo_documento" class="form-select">
+                        <select id="tipo_documento" class="form-select" required> 
                             <option value="" selected>Seleccionar</option>
                             {% for doc in tipos_documento %}
                                 <option value="{{ doc[0] }}">{{ doc[1] }}</option>
@@ -42,7 +46,7 @@
 
                     <!-- Medio de Pago -->
                     <label for="medio_pago" class="form-label mt-3">Medio de Pago</label>
-                    <select id="medio_pago" class="form-select">
+                    <select id="medio_pago" class="form-select" required>
                         <option value="" selected>Seleccionar</option>
                         <option value="EFECTIVO">Efectivo</option>
                         <option value="DEBITO">Débito</option>
@@ -136,20 +140,29 @@
                 <div class="card-body">
                     <h5 class="fw-bold mb-3">Categorías de Inventario</h5>
 
-                    <div class="row" id="categorias-grid">
+                    <!-- Scroll para categorías -->
+                    <div id="categorias-grid" class="row"
+                        style="max-height: 260px; overflow-y: auto;">
                         {% for c in categorias %}
-                            <div class="col-3 mb-3">
-                                <div class="p-3 text-center rounded categoria-card"
-                                     onclick="cargarProductosCategoria({{ c[0] }})"
-                                     style="cursor:pointer; background-color:#{{ c[2] }};">
-                                    <i class="bi {{ c[3] }} fs-2 text-light"></i>
-                                    <div class="fw-bold text-light mt-2">{{ c[1] }}</div>
-                                    <small class="text-light-50">{{ c[4] }} productos</small>
-                                </div>
+                        <div class="col-3 mb-3">
+                            <div class="p-3 text-center rounded categoria-card"
+                                onclick="cargarProductosCategoria({{ c[0] }})"
+                                style="cursor:pointer; background-color:#{{ c[2] }};">
+                                <i class="bi {{ c[3] }} fs-2 text-light"></i>
+                                <div class="fw-bold text-light mt-2">{{ c[1] }}</div>
+                                <small class="text-light-50">{{ c[4] }} productos</small>
                             </div>
+                        </div>
                         {% endfor %}
                     </div>
                 </div>
+            </div>
+
+            <!-- BOTÓN LIMPIAR ENTRE CATEGORÍAS Y PRODUCTOS -->
+            <div class="text-center mb-3">
+                <button id="btnLimpiar" class="btn btn-outline-danger">
+                    Limpiar
+                </button>
             </div>
 
             <!-- PRODUCTOS -->
@@ -157,7 +170,9 @@
                 <div class="card-body">
                     <h5 class="fw-bold mb-3">Productos</h5>
 
-                    <div id="lista-productos">
+                    <!-- Scroll para productos -->
+                    <div id="lista-productos"
+                        style="max-height: 350px; overflow-y: auto;">
                         <p class="text-muted">Seleccione una categoría para ver los productos.</p>
                     </div>
                 </div>
@@ -168,23 +183,34 @@
                 <div class="card-body">
                     <h5 class="fw-bold mb-3">Detalle de la Venta</h5>
 
-                    <table class="table table-sm" id="tabla-detalle">
-                        <thead>
-                            <tr>
-                                <th>Producto</th>
-                                <th style="width:80px;">Cant.</th>
-                                <th>V. Unit.</th>
-                                <th>Total</th>
-                                <th></th>
-                            </tr>
-                        </thead>
-                        <tbody></tbody>
-                    </table>
+                    <form id="buscarCodigoForm" class="d-flex align-items-center mb-3">
+                        <input type="text" id="codigoBarras" name="codigoBarras"
+                            class="form-control me-2"
+                            placeholder="Escanee o ingrese el código de barras del producto">
+                        <button type="submit" class="btn btn-primary">Agregar</button>
+                    </form>
+
+                    <!-- Scroll para detalle -->
+                    <div style="max-height: 250px; overflow-y: auto;">
+                        <table class="table table-sm" id="tabla-detalle">
+                            <thead>
+                                <tr>
+                                    <th>Producto</th>
+                                    <th style="width:80px;">Cant.</th>
+                                    <th>V. Unit.</th>
+                                    <th>Total</th>
+                                    <th></th>
+                                </tr>
+                            </thead>
+                            <tbody></tbody>
+                        </table>
+                    </div>
 
                 </div>
             </div>
 
         </div>
+
 
     </div>
 
@@ -193,47 +219,47 @@
 <script>
 let items = [];
 
-function formatoMoneda(valor) {
-    return new Intl.NumberFormat('es-CO', {
-        style: 'currency',
-        currency: 'COP',
-        maximumFractionDigits: 0
-    }).format(valor);
+// ---------------------- ALERTAS VISUALES ----------------------
+function mostrarAlertaCaja(mensaje, tipo = "warning") {
+    let alerta = document.getElementById("alertaCaja");
+    const texto = document.getElementById("alertaCajaTexto");
+
+    // 🔹 Si la alerta fue cerrada antes, Bootstrap la marca como "oculta"
+    //    así que la eliminamos y la recreamos para garantizar que se muestre.
+    if (alerta && alerta.classList.contains("fade") && !alerta.classList.contains("show")) {
+        alerta.remove();
+        alerta = null;
+    }
+
+    // 🔹 Si no existe, crearla desde cero
+    if (!alerta) {
+        const contenedor = document.querySelector(".container-fluid");
+        alerta = document.createElement("div");
+        alerta.id = "alertaCaja";
+        alerta.className = `alert alert-${tipo} alert-dismissible fade show text-center fw-bold`;
+        alerta.role = "alert";
+        alerta.innerHTML = `
+            <span id="alertaCajaTexto">${mensaje}</span>
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        `;
+        contenedor.prepend(alerta);
+    } else {
+        // 🔹 Si ya existe, solo actualiza el contenido y color
+        alerta.className = `alert alert-${tipo} alert-dismissible fade show text-center fw-bold`;
+        texto.innerText = mensaje;
+        alerta.classList.remove("d-none");
+    }
+
+    // 🔹 Reinicializa el componente Bootstrap
+    bootstrap.Alert.getOrCreateInstance(alerta);
 }
 
-// 🔹 Cargar productos con precio y cantidad
-function cargarProductosCategoria(categoriaId) {
-    fetch(`/ventas/caja_registradora/productos/${categoriaId}`)
-        .then(r => r.json())
-        .then(data => {
-            const cont = document.getElementById("lista-productos");
-            cont.innerHTML = "";
+// ---------------------- UTILIDADES ----------------------
+const formatoMoneda = v =>
+    new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 }).format(v);
 
-            if (!data.length) {
-                cont.innerHTML = "<p class='text-muted'>No hay productos en esta categoría.</p>";
-                return;
-            }
-
-            data.forEach(p => {
-                const div = document.createElement("div");
-                div.className = "d-flex justify-content-between align-items-center border-bottom py-2";
-                div.innerHTML = `
-                    <div>
-                        <strong>${p.nombre}</strong><br>
-                        <small class="text-muted">Precio: ${formatoMoneda(p.precio)}</small><br>
-                        <small class="text-muted">Cantidad disponible: ${p.cantidad}</small>
-                    </div>
-                    <button class="btn btn-sm btn-secondary"
-                        onclick="agregarProducto(${p.id}, '${p.nombre.replace("'", "\\'")}', ${p.precio})">
-                        Agregar
-                    </button>
-                `;
-                cont.appendChild(div);
-            });
-        });
-}
-
-function agregarProducto(id, nombre, precio) {
+// ---------------------- AGREGAR PRODUCTO ----------------------
+function agregarItem(id, nombre, precio) {
     const existente = items.find(i => i.inventario_id === id);
 
     if (existente) {
@@ -250,16 +276,71 @@ function agregarProducto(id, nombre, precio) {
     renderDetalle();
 }
 
-function eliminarItem(index) {
-    items.splice(index, 1);
-    renderDetalle();
+// ---------------------- CARGAR PRODUCTOS POR CATEGORÍA ----------------------
+function cargarProductosCategoria(categoriaId) {
+    fetch(`/ventas/caja_registradora/productos/${categoriaId}`)
+        .then(r => r.json())
+        .then(data => {
+            const cont = document.getElementById("lista-productos");
+            cont.innerHTML = "";
+
+            if (!data.length) {
+                cont.innerHTML = "<p class='text-muted'>No hay productos en esta categoría.</p>";
+                return;
+            }
+
+            data.forEach(p => {
+                const sinStock = p.cantidad <= 0;
+
+                const div = document.createElement("div");
+                div.className = "d-flex justify-content-between align-items-center border-bottom py-2";
+
+                div.innerHTML = `
+                    <div>
+                        <strong>${p.nombre}</strong><br>
+                        <small class="text-muted">Precio: ${formatoMoneda(p.precio)}</small><br>
+                        <small class="text-muted">Cantidad disponible: ${p.cantidad}</small>
+                    </div>
+
+                    <button class="btn btn-sm ${sinStock ? 'btn-danger' : 'btn-secondary'}"
+                        ${sinStock ? 'disabled' : ''}
+                        title="${sinStock ? 'Sin stock disponible' : 'Agregar producto'}"
+                        onclick="agregarItem(${p.id}, '${p.nombre.replace("'", "\\'")}', ${p.precio})">
+                        ${sinStock ? 'Sin stock' : 'Agregar'}
+                    </button>
+                `;
+
+                cont.appendChild(div);
+            });
+        });
 }
 
-function cambiarCantidad(index, valor) {
-    items[index].cantidad = parseInt(valor) || 1;
-    renderDetalle();
-}
+// ---------------------- BUSCAR POR CÓDIGO DE BARRAS ----------------------
+document.getElementById("buscarCodigoForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const codigo = document.getElementById("codigoBarras").value.trim();
+    if (!codigo) return;
 
+    const resp = await fetch(`/api/producto/${codigo}`);
+    const data = await resp.json();
+
+    if (data.error) {
+        mostrarAlertaCaja(data.error, "danger");
+        return;
+    }
+
+    if (data.CantidadDisponible <= 0) {
+    mostrarAlertaCaja(`El producto "${data.NombreProducto}" no tiene stock disponible.`, "danger");
+    document.getElementById("codigoBarras").value = "";
+    bootstrap.Alert.getOrCreateInstance(document.getElementById("alertaCaja"));
+    return;
+    }
+
+    agregarItem(data.Id, data.NombreProducto, data.Costo);
+    document.getElementById("codigoBarras").value = "";
+});
+
+// ---------------------- RENDER DETALLE ----------------------
 function renderDetalle() {
     const tbody = document.querySelector("#tabla-detalle tbody");
     tbody.innerHTML = "";
@@ -298,6 +379,27 @@ function renderDetalle() {
     calcularCambio();
 }
 
+// ---------------------- OPERACIONES SOBRE ITEMS ----------------------
+function eliminarItem(i) {
+    items.splice(i, 1);
+    renderDetalle();
+}
+
+function cambiarCantidad(i, valor) {
+    items[i].cantidad = parseInt(valor) || 1;
+    renderDetalle();
+}
+
+// ---------------------- CALCULAR CAMBIO ----------------------
+function calcularCambio() {
+    const total = parseFloat(document.getElementById("resumen-total").innerText.replace(/[^0-9]/g, "")) || 0;
+    const recibido = parseFloat(document.getElementById("valor_recibido").value) || 0;
+
+    const cambio = recibido >= total ? recibido - total : 0;
+    document.getElementById("resumen-cambio").innerText = formatoMoneda(cambio);
+}
+
+// ---------------------- TECLADO NUMÉRICO ----------------------
 function tecladoAgregar(n) {
     let display = document.getElementById("display");
     if (display.value === "0") display.value = "";
@@ -314,31 +416,26 @@ function tecladoAceptar() {
     calcularCambio();
 }
 
-function calcularCambio() {
-    const totalTexto = document.getElementById("resumen-total").innerText.replace(/[^0-9]/g, "");
-    const total = parseFloat(totalTexto) || 0;
-    const recibido = parseFloat(document.getElementById("valor_recibido").value) || 0;
-
-    let cambio = 0;
-    if (total > 0 && recibido >= total) {
-        cambio = recibido - total;
-    }
-
-    document.getElementById("resumen-cambio").innerText = formatoMoneda(cambio);
-}
-
-// 🔹 Registrar venta y limpiar campos
+// ---------------------- REGISTRAR VENTA ----------------------
 document.getElementById("btn-registrar").addEventListener("click", function () {
-    if (!items.length) {
-        alert("No hay productos en la venta.");
-        return;
-    }
+
+    if (!items.length) return mostrarAlertaCaja("No hay productos en la venta.", "warning");
+
+    const tipoDoc = document.getElementById("tipo_documento").value;
+    if (!tipoDoc) return mostrarAlertaCaja("Debe seleccionar un tipo de documento.", "warning");
+
+    const medioPago = document.getElementById("medio_pago").value;
+    if (!medioPago) return mostrarAlertaCaja("Debe seleccionar un medio de pago.", "warning");
+
+    const clienteIdentificacion = document.getElementById("cliente_identificacion").value.trim();
+    if (!clienteIdentificacion) return mostrarAlertaCaja("Debe ingresar el número de identificación del cliente.", "warning");
 
     const payload = {
-        tipo_documento_id: parseInt(document.getElementById("tipo_documento").value),
-        medio_pago: document.getElementById("medio_pago").value,
+        tipo_documento_id: parseInt(tipoDoc),
+        medio_pago: medioPago,
         iva_porcentaje: parseFloat(document.getElementById("iva_porcentaje").value),
-        cliente_identificacion: document.getElementById("cliente_identificacion").value,
+        cliente_identificacion: clienteIdentificacion,
+        valor_recibido: parseFloat(document.getElementById("valor_recibido").value),
         items: items
     };
 
@@ -349,37 +446,64 @@ document.getElementById("btn-registrar").addEventListener("click", function () {
     })
     .then(r => r.json())
     .then(resp => {
-        if (!resp.ok) {
-            alert(resp.msg);
-            return;
+        if (!resp.ok) return mostrarAlertaCaja(resp.msg, "danger");
+
+        mostrarAlertaCaja("Venta registrada correctamente.", "success");
+
+        // 👉 ABRIR PDF AUTOMÁTICAMENTE SEGÚN EL TIPO DE DOCUMENTO
+        if (resp.tipo_documento?.toUpperCase() === "DOCUMENTO_EQUIVALENTE") {
+            window.open(`/documento_equivalente/pdf/${resp.venta_id}`, "_blank");
         }
 
-        alert(`Venta registrada: ${resp.prefijo}-${resp.numero}`);
+        if (resp.tipo_documento?.toUpperCase() === "FACTURA_ELECTRONICA") {
+            window.open(`/factura_electronica/pdf/${resp.venta_id}`, "_blank");
+        }
 
-        if (resp.tipo_documento && resp.tipo_documento.toUpperCase() === "CUENTA_COBRO") {
+        if (resp.tipo_documento?.toUpperCase() === "CUENTA_COBRO") {
             window.open(`/detalleventa/pdf/${resp.venta_id}`, "_blank");
         }
 
-        // 🔹 Limpiar todo después de guardar
+        // Reset
         items = [];
         renderDetalle();
-
         document.getElementById("cliente_identificacion").value = "";
         document.getElementById("tipo_documento").selectedIndex = 0;
         document.getElementById("medio_pago").selectedIndex = 0;
         document.getElementById("iva_porcentaje").value = "0";
         document.getElementById("valor_recibido").value = "0";
         document.getElementById("resumen-cambio").innerText = formatoMoneda(0);
-
-        const cont = document.getElementById("lista-productos");
-        cont.innerHTML = "<p class='text-muted'>Seleccione una categoría para ver los productos.</p>";
+        document.getElementById("lista-productos").innerHTML =
+            "<p class='text-muted'>Seleccione una categoría para ver los productos.</p>";
 
         tecladoBorrar();
     })
-    .catch(err => {
-        alert("Error al registrar la venta: " + err);
-    });
+    .catch(err => mostrarAlertaCaja("Error al registrar la venta.", "danger"));
 });
-</script>
 
+
+
+
+// ---------------------- ACTUALIZAR IVA AUTOMÁTICAMENTE ----------------------
+document.getElementById("iva_porcentaje").addEventListener("input", renderDetalle);
+document.getElementById("iva_porcentaje").addEventListener("change", renderDetalle);
+document.getElementById("btnLimpiar").addEventListener("click", function() {
+    // Limpiar tabla de detalle
+    document.querySelector("#tabla-detalle tbody").innerHTML = "";
+
+    // Mensaje en productos
+    document.getElementById("lista-productos").innerHTML =
+        "<p class='text-muted'>Seleccione una categoría para ver los productos.</p>";
+
+    // Reset de resumen
+    document.getElementById("resumen-subtotal").textContent = "$0";
+    document.getElementById("resumen-iva").textContent = "$0";
+    document.getElementById("resumen-total").textContent = "$0";
+    document.getElementById("resumen-cambio").textContent = "$0";
+
+    // Reset de valor recibido y display del teclado
+    document.getElementById("valor_recibido").value = "0";
+    document.getElementById("display").value = "0";
+});
+
+</script>
 {% endblock %}

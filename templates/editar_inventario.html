@@ -11,11 +11,11 @@
   <!-- Datos del producto -->
   <div class="card mb-4">
     <div class="card-body row text-center">
-      <div class="col-md-2"><strong>Categoría:</strong><br>{{ producto[5] or 'Sin categoría' }}</div>
-      <div class="col-md-2"><strong>SKU:</strong><br>{{ producto[2] }}</div>
-      <div class="col-md-3"><strong>Nombre:</strong><br>{{ producto[1] }}</div>
-      <div class="col-md-3"><strong>Código de Barras:</strong><br>{{ producto[3] }}</div>
-      <div class="col-md-2"><strong>Costo:</strong><br>${{ "%.2f"|format(producto[4]) }}</div>
+      <div class="col-md-2"><strong>Categoría:</strong><br>{{ producto.categoria_nombre or 'Sin categoría' }}</div>
+      <div class="col-md-2"><strong>SKU:</strong><br>{{ producto.sku }}</div>
+      <div class="col-md-3"><strong>Nombre:</strong><br>{{ producto.nombre }}</div>
+      <div class="col-md-3"><strong>Código de Barras:</strong><br>{{ producto.codigo_barras }}</div>
+      <div class="col-md-2"><strong>Costo:</strong><br>${{ "%.2f"|format(producto.costo) }}</div>
     </div>
     <div class="card-footer text-end">
       <button type="button" class="btn btn-sm btn-outline-primary"
@@ -37,17 +37,18 @@
     <div class="card-header d-flex justify-content-between align-items-center">
       <strong>Agregar nuevo lote</strong>
 
-      <!-- Checkbox permitir sin vencimiento -->
+      {% if not producto.tiene_fecha_vencimiento %}
+      <!-- Checkbox permitir sin vencimiento SOLO si el producto NO tiene vencimiento -->
       <div class="form-check form-switch">
         <input class="form-check-input" type="checkbox" id="permitir_sin_vencimiento">
-        <label class="form-check-label" for="permitir_sin_vencimiento">Sin fecha de vencimiento
-        </label>
+        <label class="form-check-label" for="permitir_sin_vencimiento">Sin fecha de vencimiento</label>
       </div>
+      {% endif %}
     </div>
 
     <div class="card-body">
       <form method="POST"
-            action="{{ url_for('agregar_lote', inventario_id=producto[0]) }}"
+            action="{{ url_for('agregar_lote', inventario_id=producto.id) }}"
             class="row g-3" id="form_nuevo_lote">
 
         <div class="col-md-4">
@@ -62,13 +63,18 @@
 
         <div class="col-md-4">
           <label class="form-label">Fecha de Vencimiento</label>
-          <input type="date" name="fecha_vencimiento" id="fecha_vencimiento" class="form-control" required>
+
+          {% if producto.tiene_fecha_vencimiento %}
+            <input type="date" name="fecha_vencimiento" id="fecha_vencimiento" class="form-control" required>
+          {% else %}
+            <input type="date" name="fecha_vencimiento" id="fecha_vencimiento" class="form-control" disabled>
+            <small class="text-muted">Este producto no requiere fecha de vencimiento</small>
+          {% endif %}
         </div>
 
         <div class="col-12 text-end">
           <button type="submit" class="btn btn-success">Agregar Lote</button>
         </div>
-
       </form>
     </div>
   </div>
@@ -96,12 +102,18 @@
           <td>{{ lote[3] or '—' }}</td>
           <td>{{ lote[4] }}</td>
           <td class="text-end">
+
+            {% if lote[2] > 0 %}
             <button type="button"
                     class="btn btn-sm btn-outline-primary btn-editar-lote"
                     data-lote-id="{{ lote[0] }}"
-                    data-inventario-id="{{ producto[0] }}">
+                    data-inventario-id="{{ producto.id }}">
               Editar
             </button>
+            {% else %}
+            <button class="btn btn-sm btn-outline-secondary" disabled>Agotado</button>
+            {% endif %}
+
           </td>
         </tr>
         {% endfor %}
@@ -120,7 +132,7 @@
 <div class="modal fade" id="modalEditarProducto" tabindex="-1">
   <div class="modal-dialog">
     <div class="modal-content">
-      <form method="POST" action="{{ url_for('editar_inventario', inventario_id=producto[0]) }}">
+      <form method="POST" action="{{ url_for('editar_inventario', inventario_id=producto.id) }}">
         <div class="modal-header">
           <h5 class="modal-title">Editar Producto</h5>
           <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
@@ -130,30 +142,29 @@
 
           <div class="col-md-6">
             <label class="form-label">Nombre del Producto</label>
-            <input type="text" name="nombre_edit" class="form-control" value="{{ producto[1] }}" required>
+            <input type="text" name="nombre_edit" class="form-control" value="{{ producto.nombre }}" required>
           </div>
 
           <div class="col-md-6">
             <label class="form-label">SKU</label>
-            <input type="text" name="sku_edit" class="form-control" value="{{ producto[2] }}" required>
+            <input type="text" name="sku_edit" class="form-control" value="{{ producto.sku }}" required>
           </div>
 
           <div class="col-md-6">
             <label class="form-label">Código de Barras</label>
-            <input type="text" name="codigo_barras_edit" class="form-control" value="{{ producto[3] }}" required>
+            <input type="text" name="codigo_barras_edit" class="form-control" value="{{ producto.codigo_barras }}" required>
           </div>
 
           <div class="col-md-6">
             <label class="form-label">Costo</label>
-            <input type="number" step="0.01" name="costo_edit" class="form-control" value="{{ producto[4] }}" required>
+            <input type="number" step="0.01" name="costo_edit" class="form-control" value="{{ producto.costo }}" required>
           </div>
 
-          <!-- SELECT CATEGORÍA -->
           <div class="col-md-12">
             <label class="form-label">Categoría</label>
             <select name="categoria_edit" class="form-select" required>
               {% for c in categorias %}
-                <option value="{{ c[0] }}" {% if c[0] == producto[6] %}selected{% endif %}>
+                <option value="{{ c[0] }}" {% if c[0] == producto.categoria_id %}selected{% endif %}>
                   {{ c[1] }}
                 </option>
               {% endfor %}
@@ -217,26 +228,22 @@
 <script>
 document.addEventListener("DOMContentLoaded", function() {
 
-  /* -------------------------
-     Checkbox sin vencimiento
-  --------------------------*/
   const checkbox = document.getElementById("permitir_sin_vencimiento");
   const fechaInput = document.getElementById("fecha_vencimiento");
 
-  checkbox.addEventListener("change", () => {
-    if (checkbox.checked) {
-      fechaInput.removeAttribute("required");
-      fechaInput.value = "";
-      fechaInput.disabled = true;
-    } else {
-      fechaInput.setAttribute("required", "required");
-      fechaInput.disabled = false;
-    }
-  });
+  if (checkbox) {
+    checkbox.addEventListener("change", () => {
+      if (checkbox.checked) {
+        fechaInput.removeAttribute("required");
+        fechaInput.value = "";
+        fechaInput.disabled = true;
+      } else {
+        fechaInput.setAttribute("required", "required");
+        fechaInput.disabled = false;
+      }
+    });
+  }
 
-  /* -------------------------
-     Recalcular stock
-  --------------------------*/
   const totalStockBadge = document.getElementById("total_stock_badge");
 
   function recalcularStock() {
@@ -253,9 +260,6 @@ document.addEventListener("DOMContentLoaded", function() {
 
   recalcularStock();
 
-  /* -------------------------
-     Modal editar lote
-  --------------------------*/
   const modalEditarLote = new bootstrap.Modal(document.getElementById("modalEditarLote"));
   const formEditarLote = document.getElementById("formEditarLote");
 

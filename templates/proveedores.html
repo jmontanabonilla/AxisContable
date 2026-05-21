@@ -44,12 +44,13 @@
         </div>
         <div class="col-md-4">
           <label class="form-label">Tipo identificación</label>
-          <select name="tipo_identificacion_id" class="form-select" required>
-            <option value="">Seleccione...</option>
-            {% for t in tipos_identificacion %}
-              <option value="{{ t.id }}">{{ t.descripcion }}</option>
-            {% endfor %}
-          </select>
+            <select name="tipo_identificacion_id" class="form-select" required>
+                <option value="">Seleccione...</option>
+                {% for t in tipos_identificacion %}
+                    <option value="{{ t[0] }}">{{ t[1] }}</option>
+                {% endfor %}
+            </select>
+
         </div>
         <div class="col-md-4">
           <label class="form-label">Número identificación</label>

@@ -210,6 +210,7 @@
                   {% if request.endpoint in [
                       'categorias_gasto_page',
                       'categorias_inventario_page',
+                      'tipos_identificacion_page',
                       'consecutivos_page',
                       'modulos_page',
                       'parametros_page',
@@ -227,11 +228,18 @@
             </a>
           </li>
 
-          <!-- NUEVO: Categorías de Inventario -->
           <li>
             <a class="nav-link {% if request.endpoint == 'categorias_inventario_page' %}active{% endif %}"
               href="{{ url_for('categorias_inventario_page') }}">
               Categoría de Inventario
+            </a>
+          </li>
+
+          <!-- NUEVO: Tipos de Identificación -->
+          <li>
+            <a class="nav-link {% if request.endpoint == 'tipos_identificacion_page' %}active{% endif %}"
+              href="{{ url_for('tipos_identificacion_page') }}">
+              Tipos de Identificación
             </a>
           </li>
 
@@ -273,6 +281,7 @@
         </ul>
       </div>
     </li>
+
 
 
   </ul>

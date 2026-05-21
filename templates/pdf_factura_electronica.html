@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Factura Electrónica</title>
+
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            font-size: 11px;
+            margin: 0;
+            padding: 8px;
+        }
+        .center { text-align: center; }
+        .right { text-align: right; }
+        .left { text-align: left; }
+        .bold { font-weight: bold; }
+        .small { font-size: 10px; }
+        hr {
+            border: none;
+            border-top: 1px dashed #000;
+            margin: 6px 0;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        th {
+            border-bottom: 1px solid #000;
+            padding-bottom: 3px;
+        }
+        td {
+            padding: 2px 0;
+        }
+        .card-container {
+            display: flex;
+            justify-content: space-between;
+            width: 100%;
+        }
+        .card {
+            width: 49%;
+            border: 1px solid #000;
+            padding: 4px;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- ENCABEZADO NEGOCIO -->
+    <h1 class="center" style="margin: 0; padding: 0;">
+        {{ venta.NombreEmprendimiento }}
+    </h1>
+    <br>
+    <div class="center small">
+        Propietario: {{ venta.NombreEmpresario }}<br>
+        NIT: {{ venta.IdentificacionEmpresa }}<br>
+        {{ venta.DireccionEmpresa }}<br>
+        {{ venta.CiudadEmpresa }}<br>
+        Régimen: {{ venta.RegimenFiscal }}<br>
+        Resp. DIAN: {{ venta.ResponsabilidadDIAN }}
+    </div>
+
+    <hr>
+
+    <!-- TARJETAS EN LA MISMA LÍNEA -->
+    <div class="card-container">
+
+        <!-- TARJETA DOCUMENTO -->
+        <div class="card small">
+            <div class="bold center">FACTURA ELECTRÓNICA DE VENTA</div>
+            <div class="center">{{ venta.Prefijo }} - {{ venta.NumeroDocumento }}</div>
+            <div><span class="bold">Fecha:</span> {{ fecha_formateada }}</div>
+            <div><span class="bold">Hora:</span> {{ venta.HoraEmision }}</div>
+            <div><span class="bold">Ambiente:</span> {{ venta.AmbienteDIAN }}</div>
+            <div><span class="bold">Resolución:</span> {{ venta.NumeroResolucion }}</div>
+            <div><span class="bold">Fecha resolución:</span> {{ venta.FechaResolucion }}</div>
+        </div>
+
+        <!-- TARJETA CLIENTE -->
+        <div class="card small">
+            <div class="bold center">CLIENTE</div><br>
+            <div><span class="bold">Nombre:</span> {{ venta.RazonSocial }}</div>
+            <div><span class="bold">Identificación:</span> {{ venta.NumeroIdentificacion }}</div>
+            <div><span class="bold">Correo:</span> {{ venta.Correo }}</div>
+            <div><span class="bold">Municipio:</span> {{ venta.Municipio }}</div>
+        </div>
+
+    </div>
+
+    <hr>
+
+    <!-- DETALLE PRODUCTOS -->
+    <table>
+        <thead>
+            <tr>
+                <th class="left">#</th>
+                <th class="left">Descripción</th>
+                <th class="center">Cant</th>
+                <th class="right">V. Unit</th>
+                <th class="right">Total</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for d in detalles %}
+            <tr>
+                <td>{{ loop.index }}</td>
+                <td>{{ d.Descripcion }}</td>
+                <td class="center">{{ d.Cantidad }}</td>
+                <td class="right">{{ "{:,.0f}".format(d.ValorUnitario) }}</td>
+                <td class="right">{{ "{:,.0f}".format(d.ValorTotalUnitario) }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <hr>
+
+    <!-- CONTENEDOR PRINCIPAL: CUFE/QR + TOTALES -->
+    <div style="
+        width: 100%;
+        display: flex;
+        justify-content: space-between;
+        align-items: stretch;
+        margin-top: 6px;">
+
+        <!-- COLUMNA IZQUIERDA: CUFE + QR -->
+        <div style="
+            width: 50%;
+            border: 1px solid #000;
+            border-radius: 4px;
+            padding: 6px;
+            margin-right: 4px;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        ">
+            <div style="font-size: 10px;">
+                <span class="bold">CUFE:</span><br>
+
+                <!-- 🔥 ESTA ES LA CLAVE -->
+                <div style="
+                    word-break: break-all;
+                    line-height: 12px;
+                ">
+                    {{ venta.CUFE }}
+                </div>
+            </div>
+
+            <div style="text-align: center; margin-top: 6px;">
+                <img src="data:image/png;base64,{{ venta.QR }}" width="80">
+            </div>
+        </div>
+
+        <!-- COLUMNA DERECHA: TOTALES -->
+        <div style="
+            width: 50%;
+            border: 1px solid #000;
+            border-radius: 4px;
+            padding: 6px;
+            margin-left: 4px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        ">
+            <table style="width: 90%; font-size: 11px;">
+                <tr>
+                    <td class="bold left">Subtotal:</td>
+                    <td class="right">{{ "{:,.0f}".format(venta.Subtotal) }}</td>
+                </tr>
+                <tr>
+                    <td class="bold left">IVA:</td>
+                    <td class="right">{{ "{:,.0f}".format(venta.Impuestos) }}</td>
+                </tr>
+                <tr>
+                    <td class="bold left">Total factura:</td>
+                    <td class="right">{{ "{:,.0f}".format(venta.TotalVenta) }}</td>
+                </tr>
+                <tr>
+                    <td class="bold left">Valor recibido:</td>
+                    <td class="right">{{ "{:,.0f}".format(venta.TotalPagar) }}</td>
+                </tr>
+                <tr>
+                    <td class="bold left">Cambio:</td>
+                    <td class="right">{{ "{:,.0f}".format(venta.TotalPagar - venta.TotalVenta) }}</td>
+                </tr>
+                <tr>
+                    <td class="bold left">Medio de pago:</td>
+                    <td class="right">
+                        <span style="
+                            border: 1px solid #000;
+                            padding: 2px 6px;
+                            border-radius: 4px;
+                            font-size: 10px;
+                            font-weight: bold;
+                            display: inline-block;
+                        ">
+                            {{ venta.MedioPago }}
+                        </span>
+                    </td>
+                </tr>
+            </table>
+        </div>
+
+    </div>
+
+       
+   
+    <hr>
+
+
+    <div class="center small">
+        Gracias por su compra<br>
+        Esta es una Factura Electrónica de Venta válida en Colombia<br>
+        Generada en ambiente de {{ venta.AmbienteDIAN }}
+    </div>
+
+</body>
+</html>
