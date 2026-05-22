@@ -15,6 +15,8 @@ import functools
 import pdfkit
 import locale
 import os
+from threading import Timer
+import webbrowser
 
 # ---------------- CONFIG ----------------
 app = Flask(__name__)
@@ -3620,5 +3622,9 @@ def dashboard_facturas_proveedores():
 
 
 # --------------- run ----------------
+def open_browser():
+    webbrowser.open_new("http://127.0.0.1:5000")
+
 if __name__ == "__main__":
-   app.run(host="0.0.0.0", port=5000, debug=True)
+    Timer(1, open_browser).start()
+    app.run(host="0.0.0.0", port=5000, debug=True)
