@@ -1,22 +1,307 @@
 {% extends "base.html" %}
-
 {% block content %}
+
+<style>
+    .kpi-card {
+        border: none;
+        border-radius: 14px;
+        transition: 0.25s ease-in-out;
+    }
+    .kpi-card:hover {
+        transform: translateY(-6px);
+        box-shadow: 0 8px 24px rgba(0,0,0,0.15);
+    }
+    .kpi-icon {
+        font-size: 36px;
+        opacity: 0.85;
+    }
+    .chart-card {
+        border-radius: 14px;
+    }
+</style>
 
 <div class="container-fluid">
 
-    <!-- TÍTULO DEL DASHBOARD -->
+    <!-- TÍTULO -->
     <div class="d-flex justify-content-between align-items-center mb-4">
-        <h2 class="fw-bold">Dashboard de Inventarios</h2>
+        <h2 class="fw-bold">📊 Dashboard de Inventarios</h2>
     </div>
 
-    <!-- CONTENIDO VACÍO (LISTO PARA TUS GRÁFICOS) -->
-    <div class="card shadow-sm">
-        <div class="card-body text-center py-5">
-            <h5 class="text-muted">Aquí irá tu dashboard de inventarios</h5>
-            <p class="text-secondary">Puedes agregar gráficos, KPIs, tablas o cualquier visualización.</p>
+    <!-- ========================= -->
+    <!-- 🔥 TARJETAS KPI -->
+    <!-- ========================= -->
+    <div class="row g-4 mb-4">
+
+        <!-- Total Productos -->
+        <div class="col-md-3">
+            <div class="card shadow-sm kpi-card">
+                <div class="card-body text-center">
+                    <div class="kpi-icon text-primary mb-2">
+                        <i class="bi bi-box-seam"></i>
+                    </div>
+                    <h6 class="text-muted">Total Productos</h6>
+                    <h3 class="fw-bold">{{ kpis.total_productos }}</h3>
+                    <small class="text-muted">{{ kpis.total_activos }} activos</small>
+                </div>
+            </div>
         </div>
+
+        <!-- Valor Inventario -->
+        <div class="col-md-3">
+            <div class="card shadow-sm kpi-card">
+                <div class="card-body text-center">
+                    <div class="kpi-icon text-success mb-2">
+                        <i class="bi bi-cash-stack"></i>
+                    </div>
+                    <h6 class="text-muted">Valor Inventario</h6>
+                    <h3 class="fw-bold">${{ "%.2f"|format(kpis.valor_inventario) }}</h3>
+                </div>
+            </div>
+        </div>
+
+        <!-- Margen Potencial -->
+        <div class="col-md-3">
+            <div class="card shadow-sm kpi-card">
+                <div class="card-body text-center">
+                    <div class="kpi-icon text-info mb-2">
+                        <i class="bi bi-graph-up-arrow"></i>
+                    </div>
+                    <h6 class="text-muted">Margen Potencial</h6>
+                    <h3 class="fw-bold text-info">${{ "%.2f"|format(kpis.margen_potencial) }}</h3>
+                    <small class="text-muted">
+                        Margen estimado ({{ (kpis.margen_potencial_factor * 100)|round(0) }}%)
+                    </small>
+                </div>
+            </div>
+        </div>
+
+        <!-- Productos por Vencer -->
+        <div class="col-md-3">
+            <div class="card shadow-sm kpi-card">
+                <div class="card-body text-center">
+                    <div class="kpi-icon text-warning mb-2">
+                        <i class="bi bi-hourglass-split"></i>
+                    </div>
+                    <h6 class="text-muted">Productos por Vencer</h6>
+                    <h3 class="fw-bold text-warning">{{ kpis.por_vencer }}</h3>
+                    <small class="text-muted">
+                        Alerta a {{ kpis.dias_alerta_venc }} días del vencimiento
+                    </small>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- ========================= -->
+    <!-- 🔥 GRÁFICOS FILA 1 -->
+    <!-- ========================= -->
+    <div class="row g-4 mb-4">
+
+        <!-- Stock por categoría (TOP 10) -->
+        <div class="col-md-6">
+            <div class="card shadow-sm chart-card">
+                <div class="card-header fw-bold bg-light">
+                    📦 Stock por Categoría (Top 10)
+                </div>
+                <div class="card-body">
+                    <canvas id="chartCategorias" height="140"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- Vencimientos por mes -->
+        <div class="col-md-6">
+            <div class="card shadow-sm chart-card">
+                <div class="card-header fw-bold bg-light">
+                    ⏳ Vencimientos por Mes
+                </div>
+                <div class="card-body">
+                    <canvas id="chartVencimientosMes" height="140"></canvas>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- ========================= -->
+    <!-- 🔥 GRÁFICOS FILA 2 -->
+    <!-- ========================= -->
+    <div class="row g-4 mb-4">
+
+        <!-- Rotación de productos (Top 10) -->
+        <div class="col-md-6">
+            <div class="card shadow-sm chart-card">
+                <div class="card-header fw-bold bg-light">
+                    🔁 Rotación de Productos (Top 10)
+                </div>
+                <div class="card-body">
+                    <canvas id="chartRotacion" height="180"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- Días estimados de stock -->
+        <div class="col-md-6">
+            <div class="card shadow-sm chart-card">
+                <div class="card-header fw-bold bg-light">
+                    📅 Días Estimados de Stock
+                </div>
+                <div class="card-body">
+                    <canvas id="chartDiasStock" height="180"></canvas>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- ========================= -->
+    <!-- 🔥 ALERTAS (TOP 5) -->
+    <!-- ========================= -->
+    <div class="row g-4">
+
+        <div class="col-md-12">
+            <div class="card shadow-sm chart-card">
+                <div class="card-header fw-bold bg-light">
+                    ⚠ Alertas de Inventario (Top 5)
+                </div>
+                <div class="card-body">
+
+                    <table class="table table-sm table-hover">
+                        <thead>
+                            <tr>
+                                <th>Producto</th>
+                                <th>Stock</th>
+                                <th>Óptimo</th>
+                                <th>Diferencia</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for a in kpis.top_alertas %}
+                            <tr>
+                                <td>{{ a.NombreProducto }}</td>
+                                <td>{{ a.StockActual }}</td>
+                                <td>{{ a.StockOptimo }}</td>
+                                <td class="fw-bold text-danger">{{ a.Criticidad }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+
+                </div>
+            </div>
+        </div>
+
     </div>
 
 </div>
+
+<!-- ========================= -->
+<!-- 🔥 SCRIPTS CHART.JS -->
+<!-- ========================= -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+
+    // ============================
+    // 📦 STOCK POR CATEGORÍA (TOP 10)
+    // ============================
+    const categorias = {{ kpis.stock_por_categoria | tojson }};
+    new Chart(document.getElementById("chartCategorias"), {
+        type: "bar",
+        data: {
+            labels: Object.keys(categorias),
+            datasets: [{
+                label: "Unidades",
+                data: Object.values(categorias),
+                backgroundColor: "rgba(13, 110, 253, 0.7)",
+                borderColor: "#0d6efd",
+                borderWidth: 2,
+                borderRadius: 6
+            }]
+        },
+        options: {
+            plugins: { legend: { display: false }},
+            scales: { y: { beginAtZero: true }}
+        }
+    });
+
+    // ============================
+    // ⏳ VENCIMIENTOS POR MES
+    // ============================
+    const vencMes = {{ kpis.vencimientos_por_mes | tojson }};
+    new Chart(document.getElementById("chartVencimientosMes"), {
+        type: "line",
+        data: {
+            labels: Object.keys(vencMes),
+            datasets: [{
+                label: "Productos por vencer",
+                data: Object.values(vencMes),
+                borderColor: "#ffc107",
+                backgroundColor: "rgba(255,193,7,0.25)",
+                borderWidth: 2,
+                tension: 0.3,
+                fill: true,
+                pointRadius: 5,
+                pointBackgroundColor: "#ffc107"
+            }]
+        },
+        options: {
+            plugins: { legend: { display: false }},
+            scales: { y: { beginAtZero: true }}
+        }
+    });
+
+    // ============================
+    // 🔁 ROTACIÓN DE PRODUCTOS (TOP 10)
+    // ============================
+    const rotacion = {{ kpis.top_rotacion | tojson }};
+    new Chart(document.getElementById("chartRotacion"), {
+        type: "bar",
+        data: {
+            labels: rotacion.map(r => r.NombreProducto),
+            datasets: [{
+                label: "Demanda futura",
+                data: rotacion.map(r => r.DemandaFutura),
+                backgroundColor: "rgba(25,135,84,0.7)",
+                borderColor: "#198754",
+                borderWidth: 2,
+                borderRadius: 6
+            }]
+        },
+        options: {
+            indexAxis: "y",
+            plugins: { legend: { display: false }},
+            scales: { x: { beginAtZero: true }}
+        }
+    });
+
+    // ============================
+    // 📅 DÍAS ESTIMADOS DE STOCK
+    // ============================
+    const diasStock = {{ kpis.dias_stock | tojson }};
+    new Chart(document.getElementById("chartDiasStock"), {
+        type: "bar",
+        data: {
+            labels: diasStock.map(r => r.NombreProducto),
+            datasets: [{
+                label: "Días de stock",
+                data: diasStock.map(r => r.DiasStock),
+                backgroundColor: "rgba(13,110,253,0.7)",
+                borderColor: "#0d6efd",
+                borderWidth: 2,
+                borderRadius: 6
+            }]
+        },
+        options: {
+            indexAxis: "y",
+            plugins: { legend: { display: false }},
+            scales: { x: { beginAtZero: true }}
+        }
+    });
+
+});
+</script>
 
 {% endblock %}

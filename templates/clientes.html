@@ -4,17 +4,39 @@
 
   <!-- Header y búsqueda -->
   <div class="d-flex justify-content-between align-items-center mb-3">
-    <h2 class="mb-0">Clientes</h2>
+    <h2 class="mb-0">Terceros</h2>
+
     <form class="d-flex" method="get" action="{{ url_for('clientes_page') }}">
       <input class="form-control me-2" type="text" name="search" value="{{ search }}" placeholder="Buscar por nombre, identificación o correo">
+      <input type="hidden" name="tipo_entidad" value="{{ tipo_entidad }}">
       <button class="btn btn-outline-secondary" type="submit">Buscar</button>
     </form>
   </div>
+
+  <!-- Selector Cliente / Proveedor -->
+  <form method="get" action="{{ url_for('clientes_page') }}" class="mb-3">
+    <div class="d-flex align-items-center gap-2">
+      <label><strong>Mostrar:</strong></label>
+      <select name="tipo_entidad" class="form-select w-auto" onchange="this.form.submit()">
+        <option value="CLIENTE" {% if tipo_entidad == 'CLIENTE' %}selected{% endif %}>Clientes</option>
+        <option value="PROVEEDOR" {% if tipo_entidad == 'PROVEEDOR' %}selected{% endif %}>Proveedores</option>
+      </select>
+    </div>
+  </form>
 
   <!-- Formulario creación -->
   <div class="card mb-4">
     <div class="card-body">
       <form method="POST" class="row g-3">
+
+        <div class="col-md-3">
+          <label class="form-label">Tipo de tercero</label>
+          <select name="tipo_entidad" class="form-select" required>
+            <option value="CLIENTE" {% if tipo_entidad == 'CLIENTE' %}selected{% endif %}>Cliente</option>
+            <option value="PROVEEDOR" {% if tipo_entidad == 'PROVEEDOR' %}selected{% endif %}>Proveedor</option>
+          </select>
+        </div>
+
         <div class="col-md-3">
           <label class="form-label">Tipo de identificación</label>
           <select name="tipo_identificacion_id" class="form-select" required>
@@ -24,56 +46,66 @@
             {% endfor %}
           </select>
         </div>
+
         <div class="col-md-3">
           <label class="form-label">Número de identificación</label>
           <input type="text" name="numero_identificacion" class="form-control" pattern="[\d\-]+" required>
         </div>
-        <div class="col-md-6">
+
+        <div class="col-md-3">
           <label class="form-label">Razón social</label>
           <input type="text" name="razon_social" class="form-control" required>
         </div>
+
         <div class="col-md-3">
           <label class="form-label">Teléfono</label>
           <input type="text" name="telefono" class="form-control" inputmode="numeric" pattern="\d*">
         </div>
+
         <div class="col-md-3">
           <label class="form-label">Dirección</label>
           <input type="text" name="direccion" class="form-control">
         </div>
+
         <div class="col-md-3">
           <label class="form-label">Departamento</label>
           <input type="text" name="departamento" class="form-control">
         </div>
+
         <div class="col-md-3">
           <label class="form-label">Ciudad</label>
           <input type="text" name="municipio" class="form-control">
         </div>
+
         <div class="col-md-4">
           <label class="form-label">Correo</label>
           <input type="email" name="correo" class="form-control">
         </div>
+
         <div class="col-md-4 d-flex align-items-end">
           <button type="submit" class="btn btn-primary w-100">Guardar</button>
         </div>
+
       </form>
     </div>
   </div>
 
-  <!-- Encabezado de tabla: total y página -->
+  <!-- Encabezado de tabla -->
   <div class="d-flex justify-content-between align-items-center mb-2">
-    <div class="mb-0"><strong>Total Clientes:</strong> {{ total }}</div>
+    <div><strong>Total {{ tipo_entidad|capitalize }}s:</strong> {{ total }}</div>
     <div>Página {{ page }} de {{ total_pages }}</div>
   </div>
 
-  <!-- Tabla de clientes -->
+  <!-- Tabla -->
   {% if clientes %}
   <div class="table-responsive">
     <table class="table table-striped table-hover align-middle">
       <thead class="table-light">
         <tr>
-          <th>Tipo de identificación</th>
-          <th>Número Identificación</th>
-          <th>Razón social</th>
+          <th>Tipo</th>
+          <th>Tipo Identificación</th>
+          <th>Número</th>
+          <th>Razón Social</th>
           <th>Teléfono</th>
           <th>Dirección</th>
           <th>Ciudad</th>
@@ -83,123 +115,150 @@
         </tr>
       </thead>
       <tbody>
+
         {% for c in clientes %}
         <tr>
-          <td>{{ c.tipo_identificacion }}</td>
           <td>
-            {% if c.dv %}
-              {{ c.numero_identificacion }}-{{ c.dv }}
+            {% if c.tipo_entidad == 'CLIENTE' %}
+              <span class="badge bg-primary">Cliente</span>
             {% else %}
-              {{ c.numero_identificacion }}
+              <span class="badge bg-warning text-dark">Proveedor</span>
             {% endif %}
           </td>
+
+          <td>{{ c.tipo_identificacion }}</td>
+          <td>{{ c.numero_identificacion }}</td>
           <td>{{ c.razon_social }}</td>
           <td>{{ c.telefono }}</td>
           <td>{{ c.direccion }}</td>
           <td>{{ c.municipio }}</td>
           <td>{{ c.correo }}</td>
+
           <td>
             {% if c.fecha_creacion.strftime %}
               {{ c.fecha_creacion.strftime('%Y-%m-%d %H:%M:%S') }}
             {% else %}
-              {{ c.fecha_creacion|replace('.0000000','')|replace('.000000','')|replace('.000','') }}
+              {{ c.fecha_creacion|replace('.0000000','') }}
             {% endif %}
           </td>
-          <td class="text-end">
-  <div class="d-flex justify-content-end gap-2">
-    <!-- Botón editar -->
-    <button type="button" class="btn btn-sm btn-outline-secondary w-100" 
-            data-bs-toggle="modal" data-bs-target="#editModal{{ c.id }}">
-      Editar
-    </button>
-    <!-- Botón inactivar -->
-    <form method="POST" action="{{ url_for('inactivar_cliente', cliente_id=c.id, page=page, search=search) }}">
-      <button type="submit" class="btn btn-sm btn-outline-danger w-100">
-        Inactivar
-      </button>
-    </form>
-  </div>
-</td>
 
+          <td class="text-end">
+            <div class="d-flex justify-content-end gap-2">
+
+              <!-- Botón editar -->
+              <button type="button" class="btn btn-sm btn-outline-secondary"
+                      data-bs-toggle="modal" data-bs-target="#editModal{{ c.id }}">
+                Editar
+              </button>
+
+              <!-- Botón inactivar -->
+              <form method="POST" action="{{ url_for('inactivar_cliente', cliente_id=c.id, page=page, search=search, tipo_entidad=tipo_entidad) }}">
+                <button type="submit" class="btn btn-sm btn-outline-danger">Inactivar</button>
+              </form>
+
+            </div>
+          </td>
         </tr>
 
         <!-- Modal edición -->
         <div class="modal fade" id="editModal{{ c.id }}" tabindex="-1" aria-hidden="true">
           <div class="modal-dialog modal-lg">
             <div class="modal-content">
-              <form method="POST" action="{{ url_for('editar_cliente', cliente_id=c.id, page=page, search=search) }}">
+
+              <form method="POST" action="{{ url_for('editar_cliente', cliente_id=c.id, page=page, search=search, tipo_entidad=tipo_entidad) }}">
+
                 <div class="modal-header">
-                  <h5 class="modal-title">Editar cliente</h5>
+                  <h5 class="modal-title">Editar tercero</h5>
                   <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                 </div>
+
                 <div class="modal-body row g-3">
+
+                  <div class="col-md-3">
+                    <label class="form-label">Tipo de tercero</label>
+                    <select name="tipo_entidad_edit" class="form-select" required>
+                      <option value="CLIENTE" {% if c.tipo_entidad == 'CLIENTE' %}selected{% endif %}>Cliente</option>
+                      <option value="PROVEEDOR" {% if c.tipo_entidad == 'PROVEEDOR' %}selected{% endif %}>Proveedor</option>
+                    </select>
+                  </div>
+
                   <div class="col-md-3">
                     <label class="form-label">Tipo de identificación</label>
                     <select name="tipo_identificacion_edit" class="form-select" required>
-                      <option value="">Seleccione...</option>
                       {% for t in tipos_identificacion %}
                         <option value="{{ t.id }}" {% if t.id == c.tipo_identificacion_id %}selected{% endif %}>{{ t.descripcion }}</option>
                       {% endfor %}
                     </select>
                   </div>
+
                   <div class="col-md-3">
                     <label class="form-label">Número de identificación</label>
-                    <input type="text" name="numero_identificacion_edit" class="form-control" value="{{ c.numero_identificacion }}" pattern="[\d\-]+" required>
+                    <input type="text" name="numero_identificacion_edit" class="form-control" value="{{ c.numero_identificacion }}" required>
                   </div>
-                  <div class="col-md-6">
+
+                  <div class="col-md-3">
                     <label class="form-label">Razón social</label>
                     <input type="text" name="razon_social_edit" class="form-control" value="{{ c.razon_social }}" required>
                   </div>
+
                   <div class="col-md-3">
                     <label class="form-label">Teléfono</label>
-                    <input type="text" name="telefono_edit" class="form-control" value="{{ c.telefono }}" inputmode="numeric" pattern="\d*">
+                    <input type="text" name="telefono_edit" class="form-control" value="{{ c.telefono }}">
                   </div>
+
                   <div class="col-md-3">
                     <label class="form-label">Dirección</label>
                     <input type="text" name="direccion_edit" class="form-control" value="{{ c.direccion }}">
                   </div>
+
                   <div class="col-md-3">
                     <label class="form-label">Departamento</label>
                     <input type="text" name="departamento_edit" class="form-control" value="{{ c.departamento }}">
                   </div>
+
                   <div class="col-md-3">
                     <label class="form-label">Ciudad</label>
-                    <input type="text" name="municipio_edit" class="form-control" value={{ c.municipio }}>
+                    <input type="text" name="municipio_edit" class="form-control" value="{{ c.municipio }}">
                   </div>
+
                   <div class="col-md-4">
                     <label class="form-label">Correo</label>
                     <input type="email" name="correo_edit" class="form-control" value="{{ c.correo }}">
                   </div>
+
                 </div>
+
                 <div class="modal-footer">
                   <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
                   <button type="submit" class="btn btn-primary">Guardar</button>
                 </div>
+
               </form>
+
             </div>
           </div>
         </div>
-        <!-- Fin modal -->
+
         {% endfor %}
       </tbody>
     </table>
   </div>
 
   {% else %}
-  <div class="alert alert-info alert-fixed text-center">No hay clientes registrados en este momento.</div>
+    <div class="alert alert-info text-center">No hay terceros registrados.</div>
   {% endif %}
 
   <!-- Paginación -->
   <nav aria-label="Paginación">
     <ul class="pagination justify-content-center">
       <li class="page-item {% if page <= 1 %}disabled{% endif %}">
-        <a class="page-link" href="{{ url_for('clientes_page', page=page-1, search=search) }}">Anterior</a>
+        <a class="page-link" href="{{ url_for('clientes_page', page=page-1, search=search, tipo_entidad=tipo_entidad) }}">Anterior</a>
       </li>
       <li class="page-item disabled">
         <span class="page-link">Página {{ page }} de {{ total_pages }}</span>
       </li>
       <li class="page-item {% if page >= total_pages %}disabled{% endif %}">
-        <a class="page-link" href="{{ url_for('clientes_page', page=page+1, search=search) }}">Siguiente</a>
+        <a class="page-link" href="{{ url_for('clientes_page', page=page+1, search=search, tipo_entidad=tipo_entidad) }}">Siguiente</a>
       </li>
     </ul>
   </nav>

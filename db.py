@@ -53,3 +53,12 @@ def exec_sql(sql, params=()):
     cur.execute(sql, params)
     conn.commit()
     conn.close()
+
+def query_all_flat(sql, params=()):
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute(sql, params)
+    rows = [tuple(r) for r in cur.fetchall()]  # fuerza tuplas planas
+    conn.close()
+    return rows
+

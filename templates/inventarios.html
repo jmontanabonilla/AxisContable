@@ -8,11 +8,20 @@
 
     <div class="d-flex align-items-center">
 
-      <!-- Switch Activar Proyección IA -->
-      <form method="POST" action="{{ url_for('inventarios_page') }}" class="me-3">
+      <!-- 🔥 SWITCH PROYECCIÓN IA -->
+      <form method="POST" id="formProyeccionIA" class="me-3">
+        <input type="hidden" name="switch_ia" value="1">
+        <input type="hidden" name="valor" id="valorProyeccion">
+
         <div class="form-check form-switch">
-          <input class="form-check-input" type="checkbox" name="activar_proyeccion" id="activar_proyeccion">
-          <label class="form-check-label" for="activar_proyeccion">Proyección IA</label>
+          <input class="form-check-input"
+                type="checkbox"
+                id="switchProyeccionIA"
+                onchange="enviarSwitchIA(this.checked)"
+                {% if usar_proyeccion == 1 %} checked {% endif %}>
+          <label class="form-check-label fw-bold" for="switchProyeccionIA">
+            Proyección IA
+          </label>
         </div>
       </form>
 
@@ -62,7 +71,7 @@
         </div>
 
         <!-- SWITCH: Producto con fecha de vencimiento -->
-        <div class="col-md-6 d-flex align-items-end">
+        <div class="col-md-4 d-flex align-items-end">
           <div class="form-check form-switch">
             <input class="form-check-input" type="checkbox" id="tieneFechaVencimiento" name="tieneFechaVencimiento">
             <label class="form-check-label" for="tieneFechaVencimiento">
@@ -79,12 +88,12 @@
     </div>
   </div>
 
-
-
   <!-- Indicadores -->
   <div class="d-flex justify-content-between align-items-center mb-2">
-    <h6 class="mb-0">Total Productos: {{ total_productos }}</h6>
-    <small class="text-primary fw-bold">Total Stock: {{ total_stock }}</small>
+    <h6 class="mb-0">Total Registros: {{ total_productos }}</h6>
+      <small class="text-primary fw-bold">
+        Total de Inventario: {{ total_stock }} unidades
+      </small>
   </div>
 
   <!-- Tabla -->
@@ -98,34 +107,69 @@
           <th>Producto</th>
           <th>Stock</th>
           <th>Proyección IA</th>
+          <th>Valoración</th>
           <th>Valor Unitario</th>
           <th>Precio Total</th>
           <th>Fecha Creación</th>
           <th class="text-end">Acciones</th>
         </tr>
       </thead>
+
       <tbody>
         {% for p in productos %}
         <tr>
           <td>{{ p.categoria }}</td>
           <td>{{ p.sku }}</td>
           <td>{{ p.nombre }}</td>
-          <td>{{ p.stock }}</td>
 
-          <!-- Estado del modelo predictivo -->
+          <!-- Stock con validación de color -->
+          {% if usar_proyeccion == 1 %}
+            {% if p.stock < p.stock_optimo %}
+              <td class="fw-bold text-danger">
+                <i class="bi bi-arrow-down-circle-fill me-1"></i>{{ p.stock }}
+              </td>
+            {% elif p.stock > p.stock_optimo %}
+              <td class="fw-bold text-warning">
+                <i class="bi bi-exclamation-circle-fill me-1"></i>{{ p.stock }}
+              </td>
+            {% else %}
+              <td class="fw-bold text-success">
+                <i class="bi bi-check-circle-fill me-1"></i>{{ p.stock }}
+              </td>
+            {% endif %}
+          {% else %}
+            <td>{{ p.stock }}</td>
+          {% endif %}
+
+          <!-- 🔥 PROYECCIÓN IA (NUEVA LÓGICA) -->
           <td>
-            {% if p.proyeccion_ia == "Sin datos" %}
+            {% if p.proyeccion_ia == "Sin proyección" %}
+              <span class="badge bg-dark">Sin proyección</span>
+
+            {% elif p.proyeccion_ia == "Sin datos" %}
               <span class="badge bg-secondary">Sin datos</span>
 
-            {% elif p.proyeccion_ia == 0 %}
-              <span class="badge bg-dark">
-                <i class="bi bi-circle-fill text-secondary me-1"></i> Modelo Predictivo Inactivo
-              </span>
+            {% else %}
+              <span class="badge bg-primary">{{ p.proyeccion_ia }}</span>
+            {% endif %}
+          </td>
+
+          <!-- 🔥 VALORACIÓN DEL MODELO -->
+          <td>
+            {% if p.valoracion == "Bueno" %}
+              <span class="badge bg-success">Bueno</span>
+
+            {% elif p.valoracion == "Aceptable" %}
+              <span class="badge bg-info text-dark">Aceptable</span>
+
+            {% elif p.valoracion == "Regular" %}
+              <span class="badge bg-warning text-dark">Regular</span>
+
+            {% elif p.valoracion == "Malo" %}
+              <span class="badge bg-danger">Malo</span>
 
             {% else %}
-              <span class="badge bg-primary">
-                <i class="bi bi-circle-fill text-light me-1"></i> Modelo Predictivo Activo
-              </span>
+              <span class="badge bg-secondary">Sin datos</span>
             {% endif %}
           </td>
 
@@ -135,7 +179,10 @@
 
           <td class="text-end">
             <div class="btn-group" role="group">
-              <a href="{{ url_for('editar_inventario', inventario_id=p.id) }}" class="btn btn-sm btn-outline-secondary">Editar</a>
+              <a href="{{ url_for('editar_inventario', inventario_id=p.id, page=page, search=search) }}" 
+                class="btn btn-sm btn-outline-secondary">
+                Editar
+              </a>
 
               <form method="POST" action="{{ url_for('inactivar_inventario', inventario_id=p.id, page=page, search=search) }}" class="d-inline">
                 <button type="submit" class="btn btn-sm btn-outline-danger">Inactivar</button>
@@ -173,4 +220,23 @@
   </nav>
 
 </div>
+
+<!-- 🔥 SCRIPT SWITCH IA -->
+<script>
+function enviarSwitchIA(estado) {
+    const valor = estado ? "1" : "0";
+
+    fetch("/inventarios", {
+        method: "POST",
+        headers: {"Content-Type": "application/x-www-form-urlencoded"},
+        body: `switch_ia=1&valor=${valor}`
+    })
+    .then(() => location.reload());
+}
+
+document.addEventListener("DOMContentLoaded", function() {
+    document.getElementById("switchProyeccionIA").checked = {{ usar_proyeccion }};
+});
+</script>
+
 {% endblock %}

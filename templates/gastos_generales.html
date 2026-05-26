@@ -2,11 +2,11 @@
 {% block content %}
 <div class="container-fluid">
 
- <!-- Header y búsqueda -->
+  <!-- Header y búsqueda -->
   <div class="d-flex justify-content-between align-items-center mb-3">
     <h2 class="mb-0">Gastos Generales</h2>
     <form class="d-flex" method="get" action="{{ url_for('gastos_generales_page') }}">
-      <input class="form-control me-2" type="text" name="search" value="{{ search }}" placeholder="Buscar por descripción o categoría">
+      <input class="form-control me-2" type="text" name="search" value="{{ search }}" placeholder="Buscar por descripción, categoría o tipo">
       <input type="hidden" name="periodo" value="{{ periodo_seleccionado }}">
       <button class="btn btn-outline-secondary" type="submit">Buscar</button>
     </form>
@@ -40,24 +40,29 @@
     <div class="card-body">
       <form method="POST" class="row g-3">
         <input type="hidden" name="periodo" value="{{ periodo_seleccionado }}">
+
         <div class="col-md-3">
           <label class="form-label">Fecha</label>
           <input type="date" name="fecha" class="form-control"
             {% if permitir_anteriores == 0 %} min="{{ inicio_mes_str }}" {% endif %}
             max="{{ fin_mes_str }}" required>
         </div>
+
         <div class="col-md-3">
           <label class="form-label">Tipo de Registro</label>
-          <select name="tipo_registro" class="form-select" required>
+          <select name="tipo_registro_id" class="form-select" required>
             <option value="">Seleccione...</option>
-            <option value="Fijo">Fijo</option>
-            <option value="Mensual">Mensual</option>
+            {% for t in tipos_registro %}
+              <option value="{{ t[0] }}">{{ t[1] }}</option>
+            {% endfor %}
           </select>
         </div>
+
         <div class="col-md-6">
           <label class="form-label">Descripción</label>
           <input type="text" name="descripcion" class="form-control" required>
         </div>
+
         <div class="col-md-4">
           <label class="form-label">Categoría</label>
           <select name="categoria_id" class="form-select" required>
@@ -69,10 +74,12 @@
             {% endfor %}
           </select>
         </div>
+
         <div class="col-md-4">
           <label class="form-label">Valor</label>
           <input type="number" step="0.01" min="0" name="valor" class="form-control" required>
         </div>
+
         <div class="col-md-4 d-flex align-items-end">
           <button type="submit" class="btn btn-primary w-100">Guardar</button>
         </div>
@@ -80,16 +87,15 @@
     </div>
   </div>
 
-  <!-- Si no hay gastos, mostrar alerta -->
   {% if not gastos %}
     <div class="alert alert-info text-center">
       No hay registro de gastos en este período.
     </div>
   {% else %}
 
-  <!-- Encabezado de tabla: total y página -->
+  <!-- Encabezado de tabla -->
   <div class="d-flex justify-content-between align-items-center mb-2">
-    <div class="mb-0"><strong>Total Gastos:</strong> {{ total }}</div>
+    <div><strong>Total Gastos:</strong> {{ total }}</div>
     <div>Página {{ page }} de {{ total_pages }}</div>
   </div>
 
@@ -118,6 +124,7 @@
           <td>{{ g.fecha_registro }}</td>
           <td class="text-end">
             <button class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#editModal{{ g.id }}">Editar</button>
+
             <form method="POST" action="{{ url_for('inactivar_gasto_general', gasto_id=g.id, page=page, search=search, periodo=periodo_seleccionado) }}" class="d-inline">
               <button type="submit" class="btn btn-sm btn-outline-danger">Inactivar</button>
             </form>
@@ -133,23 +140,31 @@
                   <h5 class="modal-title">Editar gasto</h5>
                   <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                 </div>
+
                 <div class="modal-body">
+
                   <div class="mb-3">
                     <label class="form-label">Fecha</label>
                     <input type="date" name="fecha_edit" class="form-control"
                            min="{{ inicio_mes_str }}" max="{{ fin_mes_str }}" value="{{ g.fecha }}" required>
                   </div>
+
                   <div class="mb-3">
                     <label class="form-label">Tipo de Registro</label>
-                    <select name="tipo_registro_edit" class="form-select" required>
-                      <option value="Fijo" {% if g.tipo_registro == "Fijo" %}selected{% endif %}>Fijo</option>
-                      <option value="Mensual" {% if g.tipo_registro == "Mensual" %}selected{% endif %}>Mensual</option>
+                    <select name="tipo_registro_id_edit" class="form-select" required>
+                      {% for t in tipos_registro %}
+                        <option value="{{ t[0] }}" {% if t[0] == g.tipo_registro_id %}selected{% endif %}>
+                          {{ t[1] }}
+                        </option>
+                      {% endfor %}
                     </select>
                   </div>
+
                   <div class="mb-3">
                     <label class="form-label">Descripción</label>
                     <input type="text" name="descripcion_edit" class="form-control" value="{{ g.descripcion }}" required>
                   </div>
+
                   <div class="mb-3">
                     <label class="form-label">Categoría</label>
                     <select name="categoria_id_edit" class="form-select" required>
@@ -160,20 +175,25 @@
                       {% endfor %}
                     </select>
                   </div>
+
                   <div class="mb-3">
                     <label class="form-label">Valor</label>
                     <input type="number" step="0.01" min="0" name="valor_edit" class="form-control" value="{{ g.valor }}" required>
                   </div>
+
                 </div>
+
                 <div class="modal-footer">
                   <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
                   <button type="submit" class="btn btn-primary">Guardar</button>
                 </div>
+
               </form>
             </div>
           </div>
         </div>
         <!-- Fin modal -->
+
         {% endfor %}
       </tbody>
     </table>
@@ -197,22 +217,23 @@
   {% endif %}
 </div>
 
-<!-- Validación rápida en frontend para fechas dentro del período -->
+<!-- Validación rápida en frontend -->
 <script>
 document.addEventListener("DOMContentLoaded", function() {
-  const fechaInputs = document.querySelectorAll('input[type="date"][name="fecha"], input[type="date"][name="fecha_edit"]');
-  fechaInputs.forEach((fechaInput) => {
-    fechaInput.addEventListener("change", function() {
-      if (!fechaInput.value) return;
-      const min = new Date(fechaInput.min);
-      const max = new Date(fechaInput.max);
-      const val = new Date(fechaInput.value);
+  const fechaInputs = document.querySelectorAll('input[type="date"]');
+  fechaInputs.forEach((input) => {
+    input.addEventListener("change", function() {
+      if (!input.value) return;
+      const min = new Date(input.min);
+      const max = new Date(input.max);
+      const val = new Date(input.value);
       if (val < min || val > max) {
         alert("La fecha debe estar dentro del período seleccionado.");
-        fechaInput.value = "";
+        input.value = "";
       }
     });
   });
 });
 </script>
+
 {% endblock %}

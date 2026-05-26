@@ -196,7 +196,7 @@
     <li class="nav-item">
       <a class="nav-link {% if request.endpoint == 'clientes_page' %}active{% endif %}"
          href="{{ url_for('clientes_page') }}">
-        <i class="bi bi-people"></i> Clientes
+        <i class="bi bi-people"></i> Terceros
       </a>
     </li>
 
@@ -211,6 +211,7 @@
                       'categorias_gasto_page',
                       'categorias_inventario_page',
                       'tipos_identificacion_page',
+                      'tipos_registro_page',
                       'consecutivos_page',
                       'modulos_page',
                       'parametros_page',
@@ -235,11 +236,19 @@
             </a>
           </li>
 
-          <!-- NUEVO: Tipos de Identificación -->
+          <!-- Tipos de Identificación -->
           <li>
             <a class="nav-link {% if request.endpoint == 'tipos_identificacion_page' %}active{% endif %}"
               href="{{ url_for('tipos_identificacion_page') }}">
               Tipos de Identificación
+            </a>
+          </li>
+
+          <!-- NUEVO: Tipos de Registro -->
+          <li>
+            <a class="nav-link {% if request.endpoint == 'tipos_registro_page' %}active{% endif %}"
+              href="{{ url_for('tipos_registro_page') }}">
+              Tipos de Registro
             </a>
           </li>
 
@@ -281,6 +290,7 @@
         </ul>
       </div>
     </li>
+
 
 
 

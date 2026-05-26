@@ -30,7 +30,7 @@
   <div class="card mb-4">
     <div class="card-body d-flex justify-content-between">
       <div><strong>Período seleccionado:</strong> {{ periodo_seleccionado }}</div>
-      <div><strong>Total facturado del mes:</strong> ${{ suma_mes }}</div>
+      <div><strong>Total facturado del mes:</strong> ${{ "%.2f"|format(suma_mes) }}</div>
     </div>
   </div>
 
@@ -38,45 +38,58 @@
   <div class="card mb-4">
     <div class="card-body">
       <form method="POST" class="row g-3">
-        <div class="col-md-4">
-          <label class="form-label">Proveedor</label>
-          <input type="text" name="proveedor_nombre" class="form-control" required>
-        </div>
-        <div class="col-md-4">
-          <label class="form-label">Tipo identificación</label>
-            <select name="tipo_identificacion_id" class="form-select" required>
-                <option value="">Seleccione...</option>
-                {% for t in tipos_identificacion %}
-                    <option value="{{ t[0] }}">{{ t[1] }}</option>
-                {% endfor %}
-            </select>
 
+        <!-- Línea 1 -->
+        <div class="col-md-6">
+          <label class="form-label">Proveedor</label>
+          <select name="proveedor_id" class="form-select" required>
+            <option value="">Seleccione proveedor...</option>
+            {% for p in proveedores %}
+              <option value="{{ p.Id }}">{{ p.RazonSocial }} ({{ p.NumeroIdentificacion }})</option>
+            {% endfor %}
+          </select>
         </div>
-        <div class="col-md-4">
-          <label class="form-label">Número identificación</label>
-          <input type="text" name="numero_identificacion" class="form-control" placeholder="Ej: 800039290-0" required>
-        </div>
-        <div class="col-md-4">
+
+        <div class="col-md-3">
           <label class="form-label">Número factura</label>
           <input type="text" name="numero_factura" class="form-control" required>
         </div>
-        <div class="col-md-4">
+
+        <div class="col-md-3">
           <label class="form-label">Fecha factura</label>
           <input type="date" name="fecha_factura" class="form-control"
                  {% if permitir_anteriores == 0 %} min="{{ inicio_mes_str }}" {% endif %}
                  max="{{ fin_mes_str }}" required>
         </div>
-        <div class="col-md-4">
+
+        <!-- Línea 2 -->
+        <div class="col-md-3">
+          <label class="form-label">Fecha vencimiento</label>
+          <input type="date" name="fecha_vencimiento" class="form-control" required>
+        </div>
+
+        <div class="col-md-3">
+          <label class="form-label">Estado factura</label>
+          <select name="estado_factura" class="form-select">
+            <option value="Pendiente">Pendiente</option>
+            <option value="Pagada">Pagada</option>
+          </select>
+        </div>
+
+        <div class="col-md-3">
           <label class="form-label">Total</label>
           <input type="number" step="0.01" min="0" name="total" class="form-control" required>
         </div>
+
         <div class="col-md-12">
           <label class="form-label">Descripción</label>
           <textarea name="descripcion" class="form-control" rows="2"></textarea>
         </div>
+
         <div class="col-md-12 d-flex justify-content-end">
           <button type="submit" class="btn btn-primary">Guardar</button>
         </div>
+
       </form>
     </div>
   </div>
@@ -96,24 +109,45 @@
           <th>Proveedor</th>
           <th>Número Factura</th>
           <th>Fecha Factura</th>
-          <th>Fecha Registro</th>
+          <th>Fecha Vencimiento</th>
+          <th>Estado</th>
           <th>Total</th>
           <th class="text-end">Acciones</th>
         </tr>
       </thead>
       <tbody>
+
         {% for f in facturas %}
         <tr>
-          <td>{{ f.ProveedorNombre }}</td>
+          <td>{{ f.Proveedor }}</td>
           <td>{{ f.NumeroFactura }}</td>
-          <td>{{ f.fecha_factura }}</td>
-          <td>{{ f.FechaRegistro }}</td>
+          <td>{{ f.FechaFactura }}</td>
+          <td>{{ f.FechaVencimiento }}</td>
+          <td>
+            {% if f.EstadoFactura == 'Pendiente' %}
+              <span class="badge bg-warning text-dark">Pendiente</span>
+            {% elif f.EstadoFactura == 'Pagada' %}
+              <span class="badge bg-success">Pagada</span>
+            {% else %}
+              <span class="badge bg-secondary">Anulada</span>
+            {% endif %}
+          </td>
           <td>${{ f.Total }}</td>
+
           <td class="text-end">
-            <button class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#editModal{{ f.Id }}">Editar</button>
+
+            {% if f.EstadoFactura != 'Anulada' %}
+            <button class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#editModal{{ f.Id }}">
+              Editar
+            </button>
+            {% else %}
+            <button class="btn btn-sm btn-outline-secondary" disabled>Anulada</button>
+            {% endif %}
+
             <form method="POST" action="{{ url_for('inactivar_factura', factura_id=f.Id, page=pagina_actual, search=search, periodo=periodo_seleccionado) }}" class="d-inline">
               <button type="submit" class="btn btn-sm btn-outline-danger">Inactivar</button>
             </form>
+
           </td>
         </tr>
 
@@ -121,60 +155,88 @@
         <div class="modal fade" id="editModal{{ f.Id }}" tabindex="-1" aria-hidden="true">
           <div class="modal-dialog">
             <div class="modal-content">
+
               <form method="POST" action="{{ url_for('editar_factura', factura_id=f.Id, page=pagina_actual, search=search, periodo=periodo_seleccionado) }}">
+
                 <div class="modal-header">
                   <h5 class="modal-title">Editar factura</h5>
                   <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                 </div>
+
                 <div class="modal-body">
+
                   <div class="mb-3">
                     <label class="form-label">Proveedor</label>
-                    <input type="text" name="proveedor_edit" class="form-control" value="{{ f.ProveedorNombre }}" required>
-                  </div>
-                  <div class="mb-3">
-                    <label class="form-label">Tipo identificación</label>
-                    <select name="tipo_identificacion_edit" class="form-select" required>
-                      {% for t in tipos_identificacion %}
-                        <option value="{{ t.id }}" {% if t.id == f.TipoIdentificacionId %}selected{% endif %}>{{ t.descripcion }}</option>
+                    <select name="proveedor_id_edit" class="form-select" required>
+                      {% for p in proveedores %}
+                        <option value="{{ p.Id }}" {% if p.Id == f.ProveedorId %}selected{% endif %}>
+                          {{ p.RazonSocial }} ({{ p.NumeroIdentificacion }})
+                        </option>
                       {% endfor %}
                     </select>
                   </div>
-                  <div class="mb-3">
-                    <label class="form-label">Número identificación</label>
-                    <input type="text" name="numero_identificacion_edit" class="form-control" value="{{ f.NumeroIdentificacion }}" required>
-                  </div>
+
                   <div class="mb-3">
                     <label class="form-label">Número factura</label>
                     <input type="text" name="numero_factura_edit" class="form-control" value="{{ f.NumeroFactura }}" required>
                   </div>
+
                   <div class="mb-3">
                     <label class="form-label">Fecha factura</label>
                     <input type="date" name="fecha_factura_edit" class="form-control"
-                           {% if permitir_anteriores == 0 %} min="{{ inicio_mes_str }}" {% endif %}
-                           max="{{ fin_mes_str }}" value="{{ f.fecha_factura }}" required>
+                           value="{{ f.FechaFactura }}" required>
                   </div>
+
+                  <div class="mb-3">
+                    <label class="form-label">Fecha vencimiento</label>
+                    <input type="date" name="fecha_vencimiento_edit" class="form-control"
+                           value="{{ f.FechaVencimiento }}" required>
+                  </div>
+
+                  <div class="mb-3">
+                    <label class="form-label">Estado factura</label>
+                    <select name="estado_factura_edit" class="form-select">
+                      <option value="Pendiente" {% if f.EstadoFactura=='Pendiente' %}selected{% endif %}>Pendiente</option>
+                      <option value="Pagada" {% if f.EstadoFactura=='Pagada' %}selected{% endif %}>Pagada</option>
+                      <option value="Anulada" {% if f.EstadoFactura=='Anulada' %}selected{% endif %}>Anulada</option>
+                    </select>
+                  </div>
+
                   <div class="mb-3">
                     <label class="form-label">Total</label>
                     <input type="number" step="0.01" min="0" name="total_edit" class="form-control" value="{{ f.Total }}" required>
                   </div>
+
                   <div class="mb-3">
                     <label class="form-label">Descripción</label>
                     <textarea name="descripcion_edit" class="form-control" rows="2">{{ f.Descripcion }}</textarea>
                   </div>
+
                 </div>
+
                 <div class="modal-footer">
                   <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+
+                  {% if f.EstadoFactura != 'Anulada' %}
                   <button type="submit" class="btn btn-primary">Guardar</button>
+                  {% else %}
+                  <button type="button" class="btn btn-secondary" disabled>Factura anulada</button>
+                  {% endif %}
+
                 </div>
+
               </form>
+
             </div>
           </div>
         </div>
         <!-- Fin modal -->
+
         {% endfor %}
       </tbody>
     </table>
   </div>
+
   {% else %}
   <div class="alert alert-info text-center">
     No hay facturas de proveedores registradas en este período.
@@ -197,34 +259,4 @@
   </nav>
 
 </div>
-
-<!-- Validación rápida en frontend para fecha -->
-<script>
-document.addEventListener("DOMContentLoaded", function() {
-  const fechaInputs = document.querySelectorAll(
-    'input[type="date"][name="fecha_factura"], input[type="date"][name="fecha_factura_edit"]'
-  );
-  fechaInputs.forEach((fechaInput) => {
-    fechaInput.addEventListener("change", function() {
-      if (!fechaInput.value) return;
-      const val = new Date(fechaInput.value);
-      const max = new Date(fechaInput.max);
-
-      if (fechaInput.min) {
-        const min = new Date(fechaInput.min);
-        if (val < min || val > max) {
-          alert("La fecha debe estar dentro del mes actual");
-          fechaInput.value = "";
-        }
-      } else {
-        if (val > max) {
-          alert("La fecha no puede ser futura");
-          fechaInput.value = "";
-        }
-      }
-    });
-  });
-});
-</script>
-
 {% endblock %}

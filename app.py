@@ -9,12 +9,15 @@ from dateutil.relativedelta import relativedelta
 from weasyprint import HTML
 from num2words import num2words
 from decimal import Decimal
+from modelos.inventarios.inventarios_modelo import generar_resultados_inventario
+from modelos.inventarios.dasboard_inventarios import generar_kpis_inventario
 import hashlib
 import math
 import functools
 import pdfkit
 import locale
 import os
+
 
 # ---------------- CONFIG ----------------
 app = Flask(__name__)
@@ -1196,15 +1199,16 @@ def distribucion_principal():
                            valores=valores)
 
 
-
-
-
-# ---------------- ROUTES: CLIENTES ----------------
+# ---------------- ROUTES: CLIENTES / PROVEEDORES ----------------
 @app.route("/clientes", methods=["GET", "POST"])
 @require_permission("CLIENTES", "ver")
 def clientes_page():
     menu = get_menu_for_role(session["rol_id"])
 
+    # Tipo de entidad seleccionado (CLIENTE o PROVEEDOR)
+    tipo_entidad = (request.args.get("tipo_entidad") or "CLIENTE").upper()
+
+    # ---------------- CREAR CLIENTE / PROVEEDOR ----------------
     if request.method == "POST":
         tipo_id = (request.form.get("tipo_identificacion_id") or "").strip()
         numero_id = (request.form.get("numero_identificacion") or "").strip()
@@ -1214,42 +1218,49 @@ def clientes_page():
         departamento = (request.form.get("departamento") or "").strip()
         ciudad = (request.form.get("municipio") or "").strip()
         correo = (request.form.get("correo") or "").strip()
+        tipo_entidad_form = (request.form.get("tipo_entidad") or "CLIENTE").upper()
         usuario_id = session.get("user_id")
 
         if tipo_id and numero_id and razon and usuario_id:
-            # Validar si ya existe
+
+            # Validar duplicado por tipo + identificación
             existe = query_one("""
                 SELECT Id, Estado 
                 FROM Clientes 
-                WHERE TipoIdentificacionId = ? AND NumeroIdentificacion = ?
-            """, (tipo_id, numero_id))
+                WHERE TipoIdentificacionId = ? 
+                  AND NumeroIdentificacion = ?
+                  AND TipoEntidad = ?
+            """, (tipo_id, numero_id, tipo_entidad_form))
 
             if existe:
-                if existe[1] == 1:  # Activo
-                    flash("El cliente ya existe y está activo. No se puede duplicar.", "danger")
-                else:  # Inactivo
-                    flash("El cliente ya existe pero está inactivo. Revíselo antes de crear uno nuevo.", "warning")
+                if existe[1] == 1:
+                    flash(f"El {tipo_entidad_form.lower()} ya existe y está activo.", "danger")
+                else:
+                    flash(f"El {tipo_entidad_form.lower()} ya existe pero está inactivo.", "warning")
             else:
                 exec_sql("""
-                    INSERT INTO Clientes (TipoIdentificacionId, NumeroIdentificacion, RazonSocial, Telefono, Direccion,
-                                          Departamento, Municipio, Correo, FechaCreacion, UsuarioCreaId, Estado)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, GETDATE(), ?, 1)
-                """, (tipo_id, numero_id, razon, telefono, direccion, departamento, ciudad, correo, usuario_id))
-                flash("Cliente creado exitosamente.", "success")
+                    INSERT INTO Clientes (
+                        TipoIdentificacionId, NumeroIdentificacion, RazonSocial, Telefono, Direccion,
+                        Departamento, Municipio, Correo, FechaCreacion, UsuarioCreaId, Estado, TipoEntidad
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, GETDATE(), ?, 1, ?)
+                """, (tipo_id, numero_id, razon, telefono, direccion, departamento, ciudad, correo, usuario_id, tipo_entidad_form))
+
+                flash(f"{tipo_entidad_form.capitalize()} creado exitosamente.", "success")
         else:
             flash("Los campos Tipo de identificación, Número y Razón Social son obligatorios.", "danger")
 
-        return redirect(url_for("clientes_page"))
+        return redirect(url_for("clientes_page", tipo_entidad=tipo_entidad))
 
-    # --- Paginación y búsqueda ---
+    # ---------------- LISTADO + BÚSQUEDA + PAGINACIÓN ----------------
     page_size = 10
     page = int(request.args.get("page", 1)) if request.args.get("page") else 1
     if page < 1: page = 1
     offset = (page - 1) * page_size
 
     search = (request.args.get("search") or "").strip()
-    where = "c.Estado = 1"
-    params = []
+    where = "c.Estado = 1 AND c.TipoEntidad = ?"
+    params = [tipo_entidad]
 
     if search:
         where += " AND (c.RazonSocial LIKE ? OR c.NumeroIdentificacion LIKE ? OR c.Correo LIKE ?)"
@@ -1265,7 +1276,7 @@ def clientes_page():
 
     rows = query_all(f"""
         SELECT c.Id, t.Descripcion, c.NumeroIdentificacion, c.RazonSocial, c.Telefono, c.Direccion,
-               c.Departamento, c.Municipio, c.Correo, c.FechaCreacion, c.TipoIdentificacionId
+               c.Departamento, c.Municipio, c.Correo, c.FechaCreacion, c.TipoIdentificacionId, c.TipoEntidad
         FROM Clientes c
         JOIN TipoIdentificacion t ON c.TipoIdentificacionId = t.Id
         WHERE {where}
@@ -1284,18 +1295,19 @@ def clientes_page():
         "municipio": r[7],
         "correo": r[8],
         "fecha_creacion": r[9],
-        "tipo_identificacion_id": r[10]
+        "tipo_identificacion_id": r[10],
+        "tipo_entidad": r[11]
     } for r in rows]
 
     tipos_identificacion = query_all("SELECT Id, Descripcion FROM TipoIdentificacion WHERE Estado=1 ORDER BY Descripcion ASC")
     tipos_identificacion = [{"id": r[0], "descripcion": r[1]} for r in tipos_identificacion]
-
 
     return render_template(
         "clientes.html",
         menu=menu,
         clientes=clientes,
         tipos_identificacion=tipos_identificacion,
+        tipo_entidad=tipo_entidad,
         page=page,
         total_pages=total_pages,
         search=search,
@@ -1303,14 +1315,16 @@ def clientes_page():
     )
 
 
+# ---------------- INACTIVAR ----------------
 @app.route("/clientes/inactivar/<int:cliente_id>", methods=["POST"])
 @require_permission("CLIENTES", "editar")
 def inactivar_cliente(cliente_id):
     exec_sql("UPDATE Clientes SET Estado = 0 WHERE Id = ?", (cliente_id,))
-    flash("Cliente inactivado correctamente.", "warning")
-    return redirect(url_for("clientes_page", page=request.args.get("page", 1), search=request.args.get("search", "")))
+    flash("Registro inactivado correctamente.", "warning")
+    return redirect(url_for("clientes_page", page=request.args.get("page", 1), search=request.args.get("search", ""), tipo_entidad=request.args.get("tipo_entidad", "CLIENTE")))
 
 
+# ---------------- EDITAR ----------------
 @app.route("/clientes/editar/<int:cliente_id>", methods=["POST"])
 @require_permission("CLIENTES", "editar")
 def editar_cliente(cliente_id):
@@ -1322,28 +1336,35 @@ def editar_cliente(cliente_id):
     departamento = (request.form.get("departamento_edit") or "").strip()
     ciudad = (request.form.get("municipio_edit") or "").strip()
     correo = (request.form.get("correo_edit") or "").strip()
+    tipo_entidad = (request.form.get("tipo_entidad_edit") or "CLIENTE").upper()
 
     if tipo_id and numero_id and razon:
-        # Validación de duplicados excluyendo el mismo cliente
+
+        # Validación duplicado por tipo + identificación
         existe = query_one("""
             SELECT Id FROM Clientes
-            WHERE TipoIdentificacionId = ? AND NumeroIdentificacion = ? AND Id <> ?
-        """, (tipo_id, numero_id, cliente_id))
+            WHERE TipoIdentificacionId = ? 
+              AND NumeroIdentificacion = ? 
+              AND TipoEntidad = ?
+              AND Id <> ?
+        """, (tipo_id, numero_id, tipo_entidad, cliente_id))
 
         if existe:
-            flash("Ya existe otro cliente con ese tipo y número de identificación.", "danger")
+            flash(f"Ya existe otro {tipo_entidad.lower()} con ese tipo y número de identificación.", "danger")
         else:
             exec_sql("""
                 UPDATE Clientes
                 SET TipoIdentificacionId=?, NumeroIdentificacion=?, RazonSocial=?, Telefono=?, Direccion=?,
-                    Departamento=?, Municipio=?, Correo=?
+                    Departamento=?, Municipio=?, Correo=?, TipoEntidad=?
                 WHERE Id=?
-            """, (tipo_id, numero_id, razon, telefono, direccion, departamento, ciudad, correo, cliente_id))
-            flash("Cliente actualizado correctamente.", "success")
+            """, (tipo_id, numero_id, razon, telefono, direccion, departamento, ciudad, correo, tipo_entidad, cliente_id))
+
+            flash(f"{tipo_entidad.capitalize()} actualizado correctamente.", "success")
     else:
         flash("Los campos Tipo de identificación, Número y Razón Social son obligatorios.", "danger")
 
-    return redirect(url_for("clientes_page", page=request.args.get("page", 1), search=request.args.get("search", "")))
+    return redirect(url_for("clientes_page", page=request.args.get("page", 1), search=request.args.get("search", ""), tipo_entidad=tipo_entidad))
+
 
 # ---------------- ROUTES: PARÁMETROS DE NEGOCIO ----------------
 
@@ -1806,6 +1827,7 @@ def editar_modulo(modulo_id):
 
     return redirect(url_for("modulos_page"))
 
+
 # ---------------- ROUTES: GASTOS GENERALES ----------------
 @app.route("/gastos_generales", methods=["GET", "POST"])
 @require_permission("GASTOS", "ver")
@@ -1813,7 +1835,7 @@ def gastos_generales_page():
     menu = get_menu_for_role(session["rol_id"])
     hoy = datetime.today()
 
-    # Período seleccionado (GET usa querystring; POST usa campo oculto del formulario)
+    # Período seleccionado
     periodo_default = hoy.strftime("%Y-%m")
     periodo_str = (request.args.get("periodo") or request.form.get("periodo") or periodo_default).strip()
     try:
@@ -1822,126 +1844,112 @@ def gastos_generales_page():
         año, mes = hoy.year, hoy.month
         periodo_str = f"{año:04d}-{mes:02d}"
 
-    # Límites de fecha del período seleccionado
+    # Límites del mes
     inicio_mes = datetime(año, mes, 1)
-    if mes == 12:
-        fin_mes = datetime(año, 12, 31)
-    else:
-        fin_mes = datetime(año, mes + 1, 1) - timedelta(days=1)
+    fin_mes = datetime(año, 12, 31) if mes == 12 else datetime(año, mes + 1, 1) - timedelta(days=1)
     inicio_mes_str = inicio_mes.strftime("%Y-%m-%d")
     fin_mes_str = fin_mes.strftime("%Y-%m-%d")
 
-    # Parámetro para permitir meses anteriores en gastos (1/0)
+    # Parámetro: permitir meses anteriores
     row_param_ant = query_one("""
         SELECT ValorParametro FROM ParametrosNegocio
         WHERE NombreParametro = 'PERMITIR_FECHAS_ANTERIORES_GASTOS' AND Estado = 1
     """)
     permitir_anteriores_gastos = int(row_param_ant[0]) if row_param_ant else 0
 
-    # Crear nuevo gasto (PRG)
+    # ---------------- CREAR GASTO ----------------
     if request.method == "POST":
         fecha = (request.form.get("fecha") or "").strip()
-        tipo_registro = (request.form.get("tipo_registro") or "").strip()
+        tipo_registro_id = request.form.get("tipo_registro_id")
         descripcion = (request.form.get("descripcion") or "").strip()
         categoria_id = request.form.get("categoria_id")
         valor = (request.form.get("valor") or "").strip()
         usuario_id = session.get("user_id")
 
-        if not fecha or not tipo_registro or not descripcion or not categoria_id or not valor:
+        if not fecha or not tipo_registro_id or not descripcion or not categoria_id or not valor:
             flash("Todos los campos son obligatorios.", "danger")
             return redirect(url_for("gastos_generales_page", periodo=periodo_str))
 
-        # Validación de fecha
+        # Validación fecha
         try:
             fecha_dt = datetime.strptime(fecha, "%Y-%m-%d")
-        except (ValueError, TypeError):
+        except:
             flash("Formato de fecha inválido.", "danger")
             return redirect(url_for("gastos_generales_page", periodo=periodo_str))
 
-        # Bloquear meses futuros
         if fecha_dt > fin_mes:
             flash("No se permite registrar gastos en meses futuros.", "danger")
             return redirect(url_for("gastos_generales_page", periodo=periodo_str))
 
-        # Bloquear meses anteriores si el parámetro está en 0
         if permitir_anteriores_gastos == 0 and fecha_dt < inicio_mes:
             flash("No se permite registrar gastos en meses anteriores.", "danger")
             return redirect(url_for("gastos_generales_page", periodo=periodo_str))
 
-        # Validación de duplicados por categoría si la categoría es única por mes
+        # Validación categoría única por mes
         row_cat = query_one("SELECT EsUnicaMes FROM CategoriasGasto WHERE Id = ?", (categoria_id,))
-        es_unica = bool(row_cat[0]) if row_cat and row_cat[0] else False
+        es_unica = bool(row_cat[0]) if row_cat else False
+
         if es_unica:
             existe = query_one("""
                 SELECT Id FROM GastosGenerales
                 WHERE Estado = 1 AND CategoriaId = ? AND MONTH(Fecha) = ? AND YEAR(Fecha) = ?
             """, (categoria_id, mes, año))
             if existe:
-                flash("Ya existe un gasto registrado en esta categoría para el período seleccionado.", "danger")
+                flash("Ya existe un gasto registrado en esta categoría para este mes.", "danger")
                 return redirect(url_for("gastos_generales_page", periodo=periodo_str))
 
-        # Inserción
+        # INSERT
         exec_sql("""
-            INSERT INTO GastosGenerales (Fecha, TipoRegistro, Descripcion, CategoriaId, Valor, UsuarioId, FechaRegistro, Estado)
+            INSERT INTO GastosGenerales (Fecha, TipoRegistroId, Descripcion, CategoriaId, Valor, UsuarioId, FechaRegistro, Estado)
             VALUES (?, ?, ?, ?, ?, ?, GETDATE(), 1)
-        """, (fecha, tipo_registro, descripcion, categoria_id, valor, usuario_id))
+        """, (fecha, tipo_registro_id, descripcion, categoria_id, valor, usuario_id))
+
         flash("Gasto registrado exitosamente.", "success")
         return redirect(url_for("gastos_generales_page", periodo=periodo_str))
 
-    # --- Parámetro: meses visibles para selector de períodos ---
+    # ---------------- PERÍODOS DISPONIBLES ----------------
     row_param = query_one("""
-        SELECT ValorParametro
-        FROM ParametrosNegocio
+        SELECT ValorParametro FROM ParametrosNegocio
         WHERE NombreParametro = 'MESES_GASTOS_VISIBLES' AND Estado = 1
     """)
-    try:
-        meses_rango = int(row_param[0]) if row_param and str(row_param[0]).isdigit() else 12
-    except Exception:
-        meses_rango = 12
+    meses_rango = int(row_param[0]) if row_param and str(row_param[0]).isdigit() else 12
 
-    # Lista de períodos disponibles (últimos N meses desde hoy)
     base = datetime(hoy.year, hoy.month, 1)
-    periodos_disponibles = []
-    for i in range(meses_rango):
-        ref = base - timedelta(days=30 * i)
-        valor = ref.strftime("%Y-%m")
-        nombre = ref.strftime("%B %Y")
-        periodos_disponibles.append({"valor": valor, "nombre": nombre})
+    periodos_disponibles = [{
+        "valor": (base - timedelta(days=30 * i)).strftime("%Y-%m"),
+        "nombre": (base - timedelta(days=30 * i)).strftime("%B %Y")
+    } for i in range(meses_rango)]
 
-    # --- Paginación y búsqueda ---
+    # ---------------- LISTADO + BÚSQUEDA + PAGINACIÓN ----------------
     page_size = 10
-    try:
-        page = int(request.args.get("page", 1))
-        if page < 1:
-            page = 1
-    except ValueError:
-        page = 1
+    page = max(1, int(request.args.get("page", 1)))
     offset = (page - 1) * page_size
 
     search = (request.args.get("search") or "").strip()
     where = "g.Estado = 1 AND MONTH(g.Fecha) = ? AND YEAR(g.Fecha) = ?"
     params = [mes, año]
+
     if search:
-        where += " AND (g.Descripcion LIKE ? OR c.Nombre LIKE ?)"
+        where += " AND (g.Descripcion LIKE ? OR c.Nombre LIKE ? OR tr.NombreTipo LIKE ?)"
         like = f"%{search}%"
-        params.extend([like, like])
+        params.extend([like, like, like])
 
     total_row = query_one(f"""
         SELECT COUNT(*)
         FROM GastosGenerales g
         JOIN CategoriasGasto c ON g.CategoriaId = c.Id
+        JOIN TiposRegistro tr ON g.TipoRegistroId = tr.Id
         WHERE {where}
     """, tuple(params))
     total = int(total_row[0]) if total_row else 0
     total_pages = max(1, (total + page_size - 1) // page_size)
-    if page > total_pages:
-        page = total_pages
-        offset = (page - 1) * page_size
 
     rows = query_all(f"""
-        SELECT g.Id, g.Fecha, g.TipoRegistro, g.Descripcion, c.Nombre, g.Valor, g.FechaRegistro, g.CategoriaId
+        SELECT g.Id, g.Fecha, tr.NombreTipo, g.Descripcion, c.Nombre, g.Valor, g.FechaRegistro,
+               g.CategoriaId, g.TipoRegistroId
         FROM GastosGenerales g
         JOIN CategoriasGasto c ON g.CategoriaId = c.Id
+        JOIN TiposRegistro tr ON g.TipoRegistroId = tr.Id
         WHERE {where}
         ORDER BY g.Id DESC
         OFFSET ? ROWS FETCH NEXT ? ROWS ONLY
@@ -1949,19 +1957,30 @@ def gastos_generales_page():
 
     gastos = [{
         "id": r[0],
-        "fecha": r[1].strftime("%Y-%m-%d") if r[1] else "",
+        "fecha": r[1].strftime("%Y-%m-%d"),
         "tipo_registro": r[2],
         "descripcion": r[3],
         "categoria": r[4],
         "valor": float(r[5]),
-        "fecha_registro": r[6].strftime("%Y-%m-%d %H:%M") if r[6] else "",
-        "categoria_id": r[7]
+        "fecha_registro": r[6].strftime("%Y-%m-%d %H:%M"),
+        "categoria_id": r[7],
+        "tipo_registro_id": r[8]
     } for r in rows]
 
-    categorias = query_all("SELECT Id, Nombre, EsUnicaMes FROM CategoriasGasto WHERE Estado = 1 ORDER BY Nombre ASC")
-    categorias = [{"id": r[0], "nombre": r[1], "es_unica": bool(r[2])} for r in categorias]
+    categorias = [{
+        "id": r[0],
+        "nombre": r[1],
+        "es_unica": bool(r[2])
+    } for r in query_all("SELECT Id, Nombre, EsUnicaMes FROM CategoriasGasto WHERE Estado = 1 ORDER BY Nombre ASC")]
 
-    # --- Total del período seleccionado ---
+    tipos_registro = query_all("""
+        SELECT Id, NombreTipo
+        FROM TiposRegistro
+        WHERE Estado = 1
+        ORDER BY NombreTipo ASC
+    """)
+
+    # Total del mes
     row_total_mes = query_one("""
         SELECT ISNULL(SUM(Valor),0)
         FROM GastosGenerales
@@ -1974,6 +1993,7 @@ def gastos_generales_page():
         menu=menu,
         gastos=gastos,
         categorias=categorias,
+        tipos_registro=tipos_registro,
         page=page,
         total_pages=total_pages,
         search=search,
@@ -1987,6 +2007,7 @@ def gastos_generales_page():
     )
 
 
+# ---------------- INACTIVAR ----------------
 @app.route("/gastos_generales/inactivar/<int:gasto_id>", methods=["POST"])
 @require_permission("GASTOS", "editar")
 def inactivar_gasto_general(gasto_id):
@@ -2000,79 +2021,54 @@ def inactivar_gasto_general(gasto_id):
     ))
 
 
+# ---------------- EDITAR ----------------
 @app.route("/gastos_generales/editar/<int:gasto_id>", methods=["POST"])
 @require_permission("GASTOS", "editar")
 def editar_gasto_general(gasto_id):
-    # Período desde querystring para validar contra el mes/año visibles
     periodo_default = datetime.today().strftime("%Y-%m")
     periodo_str = (request.args.get("periodo") or periodo_default).strip()
-    try:
-        año, mes = map(int, periodo_str.split("-"))
-    except Exception:
-        año, mes = datetime.today().year, datetime.today().month
+    año, mes = map(int, periodo_str.split("-"))
 
     inicio_mes = datetime(año, mes, 1)
-    if mes == 12:
-        fin_mes = datetime(año, 12, 31)
-    else:
-        fin_mes = datetime(año, mes + 1, 1) - timedelta(days=1)
+    fin_mes = datetime(año, 12, 31) if mes == 12 else datetime(año, mes + 1, 1) - timedelta(days=1)
 
-    fecha = (request.form.get("fecha_edit") or "").strip()
-    tipo_registro = (request.form.get("tipo_registro_edit") or "").strip()
-    descripcion = (request.form.get("descripcion_edit") or "").strip()
+    fecha = request.form.get("fecha_edit")
+    tipo_registro_id = request.form.get("tipo_registro_id_edit")
+    descripcion = request.form.get("descripcion_edit")
     categoria_id = request.form.get("categoria_id_edit")
-    valor = (request.form.get("valor_edit") or "").strip()
+    valor = request.form.get("valor_edit")
 
-    if not fecha or not tipo_registro or not descripcion or not categoria_id or not valor:
+    if not fecha or not tipo_registro_id or not descripcion or not categoria_id or not valor:
         flash("Todos los campos son obligatorios.", "danger")
-        return redirect(url_for("gastos_generales_page",
-                                page=request.args.get("page", 1),
-                                search=request.args.get("search", ""),
-                                periodo=periodo_str))
+        return redirect(url_for("gastos_generales_page", periodo=periodo_str))
 
-    # Validación de fecha dentro del período seleccionado
-    try:
-        fecha_dt = datetime.strptime(fecha, "%Y-%m-%d")
-    except (ValueError, TypeError):
-        flash("Formato de fecha inválido.", "danger")
-        return redirect(url_for("gastos_generales_page",
-                                page=request.args.get("page", 1),
-                                search=request.args.get("search", ""),
-                                periodo=periodo_str))
+    fecha_dt = datetime.strptime(fecha, "%Y-%m-%d")
     if not (inicio_mes <= fecha_dt <= fin_mes):
         flash("La fecha debe estar dentro del período seleccionado.", "danger")
-        return redirect(url_for("gastos_generales_page",
-                                page=request.args.get("page", 1),
-                                search=request.args.get("search", ""),
-                                periodo=periodo_str))
+        return redirect(url_for("gastos_generales_page", periodo=periodo_str))
 
-    # Validación de duplicados por categoría si la categoría es única por mes
+    # Validación categoría única
     row_cat = query_one("SELECT EsUnicaMes FROM CategoriasGasto WHERE Id = ?", (categoria_id,))
-    es_unica = bool(row_cat[0]) if row_cat and row_cat[0] else False
+    es_unica = bool(row_cat[0]) if row_cat else False
+
     if es_unica:
         existe = query_one("""
             SELECT Id FROM GastosGenerales
             WHERE Estado = 1 AND CategoriaId = ? AND MONTH(Fecha) = ? AND YEAR(Fecha) = ? AND Id <> ?
         """, (categoria_id, mes, año, gasto_id))
         if existe:
-            flash("Ya existe otro gasto registrado en esta categoría para el período seleccionado.", "danger")
-            return redirect(url_for("gastos_generales_page",
-                                    page=request.args.get("page", 1),
-                                    search=request.args.get("search", ""),
-                                    periodo=periodo_str))
+            flash("Ya existe otro gasto en esta categoría para este mes.", "danger")
+            return redirect(url_for("gastos_generales_page", periodo=periodo_str))
 
-    # Actualización
     exec_sql("""
         UPDATE GastosGenerales
-        SET Fecha = ?, TipoRegistro = ?, Descripcion = ?, CategoriaId = ?, Valor = ?, FechaRegistro = GETDATE()
+        SET Fecha = ?, TipoRegistroId = ?, Descripcion = ?, CategoriaId = ?, Valor = ?, FechaRegistro = GETDATE()
         WHERE Id = ?
-    """, (fecha, tipo_registro, descripcion, categoria_id, valor, gasto_id))
-    flash("Gasto actualizado correctamente.", "success")
+    """, (fecha, tipo_registro_id, descripcion, categoria_id, valor, gasto_id))
 
-    return redirect(url_for("gastos_generales_page",
-                            page=request.args.get("page", 1),
-                            search=request.args.get("search", ""),
-                            periodo=periodo_str))
+    flash("Gasto actualizado correctamente.", "success")
+    return redirect(url_for("gastos_generales_page", periodo=periodo_str))
+
 
 # ---------------- ROUTES: PROVEEDORES ----------------
 @app.route("/proveedores", methods=["GET", "POST"])
@@ -2081,18 +2077,13 @@ def proveedores_page():
     menu = get_menu_for_role(session["rol_id"])
     hoy = datetime.today()
 
-    # Límites de fecha del mes actual
+    # Límites del mes actual
     inicio_mes = hoy.replace(day=1)
-    if hoy.month == 12:
-        siguiente_mes = hoy.replace(year=hoy.year + 1, month=1, day=1)
-    else:
-        siguiente_mes = hoy.replace(month=hoy.month + 1, day=1)
-    fin_mes = siguiente_mes - timedelta(days=1)
-
+    fin_mes = (inicio_mes + timedelta(days=32)).replace(day=1) - timedelta(days=1)
     inicio_mes_str = inicio_mes.strftime("%Y-%m-%d")
     fin_mes_str = fin_mes.strftime("%Y-%m-%d")
 
-    # Parámetro para permitir meses anteriores en proveedores (1/0)
+    # Parámetro para permitir meses anteriores
     row_param = query_one("""
         SELECT ValorParametro FROM ParametrosNegocio
         WHERE NombreParametro = 'PERMITIR_FECHAS_ANTERIORES_PROVEEDORES' AND Estado = 1
@@ -2105,84 +2096,110 @@ def proveedores_page():
     pagina_actual = int(request.args.get("page", 1))
     registros_por_pagina = 10
 
-    # --- Registrar nueva factura de proveedor ---
+    # ---------------- REGISTRAR NUEVA FACTURA ----------------
     if request.method == "POST":
-        proveedor_nombre = request.form.get("proveedor_nombre")
-        tipo_identificacion_id = request.form.get("tipo_identificacion_id")
-        numero_identificacion = request.form.get("numero_identificacion")
+        proveedor_id = request.form.get("proveedor_id")
         numero_factura = request.form.get("numero_factura")
         fecha_factura = request.form.get("fecha_factura")
+        fecha_vencimiento = request.form.get("fecha_vencimiento")
+        estado_factura = request.form.get("estado_factura", "Pendiente")
         total = request.form.get("total")
         descripcion = request.form.get("descripcion")
         usuario_id = session.get("user_id")
 
-        if not proveedor_nombre or not tipo_identificacion_id or not numero_identificacion or not numero_factura or not fecha_factura or not total:
+        # Validaciones básicas
+        if not proveedor_id or not numero_factura or not fecha_factura or not total:
             flash("Todos los campos son obligatorios.", "warning")
             return redirect(url_for("proveedores_page", periodo=periodo_str))
 
-        # Validación de fecha
+        # Validar fecha factura
         try:
             fecha_dt = datetime.strptime(fecha_factura, "%Y-%m-%d")
-        except (ValueError, TypeError):
+        except:
             flash("Formato de fecha inválido.", "danger")
             return redirect(url_for("proveedores_page", periodo=periodo_str))
 
-        # Bloquear meses futuros
-        if fecha_dt > fin_mes:
-            flash("No se permite registrar facturas en meses futuros.", "danger")
+        # Validar fecha vencimiento
+        try:
+            venc_dt = datetime.strptime(fecha_vencimiento, "%Y-%m-%d")
+        except:
+            flash("Formato de fecha de vencimiento inválido.", "danger")
             return redirect(url_for("proveedores_page", periodo=periodo_str))
 
-        # Bloquear meses anteriores si el parámetro está en 0
-        if permitir_anteriores_prov == 0 and fecha_dt < inicio_mes:
-            flash("No se permite registrar facturas en meses anteriores.", "danger")
+        if venc_dt <= fecha_dt:
+            flash("La fecha de vencimiento debe ser posterior a la fecha de emisión.", "danger")
             return redirect(url_for("proveedores_page", periodo=periodo_str))
 
-        # Validación de total
+        # Validar total
         total = float(total.replace(",", ".")) if total else 0.0
         if total <= 0:
-            flash("El total de la factura debe ser mayor a cero.", "warning")
+            flash("El total debe ser mayor a cero.", "warning")
             return redirect(url_for("proveedores_page", periodo=periodo_str))
 
-        # Insertar factura en FacturasProveedores
+        # Validar duplicado
+        existe = query_one("""
+            SELECT Id FROM FacturasProveedores
+            WHERE ProveedorId = ? AND NumeroFactura = ? AND Estado = 1
+        """, (proveedor_id, numero_factura))
+        if existe:
+            flash("Ya existe una factura activa con ese número para este proveedor.", "danger")
+            return redirect(url_for("proveedores_page", periodo=periodo_str))
+
+        # Validar estado inicial (solo Pendiente o Pagada)
+        if estado_factura not in ["Pendiente", "Pagada"]:
+            estado_factura = "Pendiente"
+
+        # Insertar factura
         exec_sql("""
             INSERT INTO FacturasProveedores (
-                ProveedorNombre, TipoIdentificacionId, NumeroIdentificacion,
-                NumeroFactura, FechaFactura, Total, Descripcion,
+                ProveedorId, NumeroFactura, FechaFactura, FechaVencimiento,
+                Total, Descripcion, EstadoFactura,
                 UsuarioId, FechaRegistro, Estado
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, GETDATE(), 1)
-        """, (proveedor_nombre, tipo_identificacion_id, numero_identificacion,
-              numero_factura, fecha_factura, total, descripcion, usuario_id))
+        """, (
+            proveedor_id, numero_factura, fecha_factura, fecha_vencimiento,
+            total, descripcion, estado_factura, usuario_id
+        ))
 
         flash("Factura de proveedor registrada exitosamente.", "success")
         return redirect(url_for("proveedores_page", periodo=periodo_str))
 
-    # --- Listado y filtros ---
-    filtro = "WHERE Estado = 1 AND MONTH(FechaFactura) = ? AND YEAR(FechaFactura) = ?"
-    params = [mes, año]
-    if search:
-        filtro += " AND (ProveedorNombre LIKE ? OR NumeroFactura LIKE ?)"
-        params += [f"%{search}%", f"%{search}%"]
-
+    # ---------------- LISTADO Y FILTROS ----------------
     facturas = query_all(f"""
-        SELECT Id,
-               ProveedorNombre,
-               NumeroFactura,
-               CONVERT(varchar(10), FechaFactura, 120) AS fecha_factura,
-               Total,
-               Descripcion,
-               FechaRegistro,
-               Estado
-        FROM FacturasProveedores
-        {filtro}
-        ORDER BY FechaRegistro DESC
-    """, params)
+        SELECT FP.Id,
+               FP.ProveedorId,
+               C.RazonSocial AS Proveedor,
+               FP.NumeroFactura,
+               CONVERT(varchar(10), FP.FechaFactura, 120) AS FechaFactura,
+               CONVERT(varchar(10), FP.FechaVencimiento, 120) AS FechaVencimiento,
+               FP.Total,
+               FP.Descripcion,
+               FP.EstadoFactura,
+               FP.FechaRegistro
+        FROM FacturasProveedores FP
+        JOIN Clientes C ON FP.ProveedorId = C.Id
+        WHERE C.TipoEntidad = 'PROVEEDOR'
+          AND FP.Estado = 1
+          AND MONTH(FP.FechaFactura) = ? AND YEAR(FP.FechaFactura) = ?
+        ORDER BY FP.FechaRegistro DESC
+    """, [mes, año])
 
     total_registros = len(facturas)
     total_paginas = math.ceil(total_registros / registros_por_pagina)
     inicio = (pagina_actual - 1) * registros_por_pagina
     facturas_pagina = facturas[inicio:inicio + registros_por_pagina]
 
-    # Selector de periodos visibles
+    # ---------------- TOTAL FACTURADO DEL MES ----------------
+    row_suma = query_one("""
+        SELECT ISNULL(SUM(Total), 0)
+        FROM FacturasProveedores
+        WHERE Estado = 1
+          AND EstadoFactura <> 'Anulada'
+          AND MONTH(FechaFactura) = ? AND YEAR(FechaFactura) = ?
+    """, (mes, año))
+    suma_mes = float(row_suma[0]) if row_suma else 0.0
+
+    # ---------------- SELECTOR DE PERÍODOS ----------------
     row_visible_meses = query_one("""
         SELECT ValorParametro FROM ParametrosNegocio
         WHERE NombreParametro = 'REGISTRO_MESES_PROVEEDORES_VISIBLES' AND Estado = 1
@@ -2194,22 +2211,24 @@ def proveedores_page():
                 "agosto", "septiembre", "octubre", "noviembre", "diciembre"]
     periodos_disponibles = []
     for i in range(visible_meses):
-        dt = restar_meses(base, i)
+        dt = base - timedelta(days=30 * i)
         valor = f"{dt.year:04d}-{dt.month:02d}"
         nombre = f"{meses_es[dt.month - 1]} {dt.year}"
         periodos_disponibles.append({"valor": valor, "nombre": nombre})
 
-    # Tipos de identificación activos para el selector
-    tipos_identificacion = query_all("""
-        SELECT Id, Descripcion FROM TipoIdentificacion WHERE Estado = 1 ORDER BY Descripcion
+    # ---------------- LISTA DE PROVEEDORES ----------------
+    proveedores = query_all("""
+        SELECT Id, RazonSocial, NumeroIdentificacion
+        FROM Clientes
+        WHERE Estado = 1 AND TipoEntidad = 'PROVEEDOR'
+        ORDER BY RazonSocial ASC
     """)
 
-    # Return
     return render_template("proveedores.html",
         menu=menu,
         periodo_seleccionado=periodo_str,
         facturas=facturas_pagina,
-        tipos_identificacion=tipos_identificacion,
+        proveedores=proveedores,
         total_registros=total_registros,
         pagina_actual=pagina_actual,
         total_paginas=total_paginas,
@@ -2217,57 +2236,64 @@ def proveedores_page():
         periodos_disponibles=periodos_disponibles,
         inicio_mes_str=inicio_mes_str,
         fin_mes_str=fin_mes_str,
-        permitir_anteriores=permitir_anteriores_prov
+        permitir_anteriores=permitir_anteriores_prov,
+        suma_mes=suma_mes
     )
 
+
+# ---------------- INACTIVAR ----------------
 @app.route("/proveedores/inactivar/<int:factura_id>", methods=["POST"])
 @require_permission("PROVEEDORES", "editar")
 def inactivar_factura(factura_id):
     exec_sql("UPDATE FacturasProveedores SET Estado = 0 WHERE Id = ?", (factura_id,))
-    flash("Factura inactivada.", "warning")
+    flash("Factura inactivada correctamente.", "warning")
     return redirect(url_for("proveedores_page",
                             page=request.args.get("page", 1),
                             search=request.args.get("search", "")))
 
+
+# ---------------- EDITAR ----------------
 @app.route("/proveedores/editar/<int:factura_id>", methods=["POST"])
 @require_permission("PROVEEDORES", "editar")
 def editar_factura(factura_id):
-    proveedor = (request.form.get("proveedor_edit") or "").strip()
-    tipo_id = request.form.get("tipo_identificacion_edit")
-    numero_id = (request.form.get("numero_identificacion_edit") or "").strip()
-    numero_factura = (request.form.get("numero_factura_edit") or "").strip()
+    proveedor_id = request.form.get("proveedor_id_edit")
+    numero_factura = request.form.get("numero_factura_edit")
     fecha_factura = request.form.get("fecha_factura_edit")
+    fecha_vencimiento = request.form.get("fecha_vencimiento_edit")
+    estado_factura = request.form.get("estado_factura_edit")
     total = request.form.get("total_edit")
-    descripcion = (request.form.get("descripcion_edit") or "").strip()
+    descripcion = request.form.get("descripcion_edit")
 
-    tipo_id = int(tipo_id) if tipo_id else None
-    total = float((total or "0").replace(",", ".")) if total else 0.0
-
-    # Validación de campos obligatorios (no pueden estar vacíos)
-    if not proveedor or not tipo_id or not numero_id or not numero_factura:
-        flash("Proveedor, tipo ID, número ID y número de factura son obligatorios.", "danger")
+    # Validar campos obligatorios
+    if not proveedor_id or not numero_factura or not fecha_factura or not fecha_vencimiento:
+        flash("Proveedor, número de factura, fecha de emisión y vencimiento son obligatorios.", "danger")
         return redirect(url_for("proveedores_page",
                                 page=request.args.get("page", 1),
-                                search=request.args.get("search", "")))
+                                search=request.args.get("search", ""),
+                                periodo=request.args.get("periodo", datetime.today().strftime("%Y-%m"))))
 
-    # Validación de fecha dentro del mes actual
-    hoy = datetime.today()
-    inicio_mes = hoy.replace(day=1)
-    fin_mes = hoy.replace(month=hoy.month + 1, day=1) - timedelta(days=1) if hoy.month < 12 else hoy.replace(month=12, day=31)
+    # Validar fechas
     try:
-        fecha_factura_dt = datetime.strptime(fecha_factura, "%Y-%m-%d")
-    except (ValueError, TypeError):
+        fecha_dt = datetime.strptime(fecha_factura, "%Y-%m-%d")
+        venc_dt = datetime.strptime(fecha_vencimiento, "%Y-%m-%d")
+    except:
         flash("Formato de fecha inválido.", "danger")
         return redirect(url_for("proveedores_page",
                                 page=request.args.get("page", 1),
-                                search=request.args.get("search", "")))
-    if not (inicio_mes <= fecha_factura_dt <= fin_mes):
-        flash("La fecha de la factura debe estar dentro del mes actual.", "danger")
+                                search=request.args.get("search", ""),
+                                periodo=request.args.get("periodo", datetime.today().strftime("%Y-%m"))))
+
+    if venc_dt <= fecha_dt:
+        flash("La fecha de vencimiento debe ser posterior a la fecha de emisión.", "danger")
         return redirect(url_for("proveedores_page",
                                 page=request.args.get("page", 1),
-                                search=request.args.get("search", "")))
+                                search=request.args.get("search", ""),
+                                periodo=request.args.get("periodo", datetime.today().strftime("%Y-%m"))))
 
-    # Validación de duplicados
+    # Normalizar total
+    total = float((total or "0").replace(",", "."))
+
+    # Validar duplicado de número de factura
     existe = query_one("""
         SELECT Id FROM FacturasProveedores
         WHERE NumeroFactura = ? AND Estado = 1 AND Id <> ?
@@ -2276,28 +2302,36 @@ def editar_factura(factura_id):
         flash("Ya existe otra factura activa con ese número.", "danger")
         return redirect(url_for("proveedores_page",
                                 page=request.args.get("page", 1),
-                                search=request.args.get("search", "")))
+                                search=request.args.get("search", ""),
+                                periodo=request.args.get("periodo", datetime.today().strftime("%Y-%m"))))
 
-    # Actualización (se actualizan todos los campos con lo que venga del formulario)
+    # Validar estado (en edición sí se permite Anulada)
+    if estado_factura not in ["Pendiente", "Pagada", "Anulada"]:
+        estado_factura = "Pendiente"
+
+    # Actualizar factura
     exec_sql("""
         UPDATE FacturasProveedores
-        SET ProveedorNombre = ?,
-            TipoIdentificacionId = ?,
-            NumeroIdentificacion = ?,
-            NumeroFactura = ?,
-            FechaFactura = ?,
-            Total = ?,
-            Descripcion = ?
+        SET ProveedorId = ?, NumeroFactura = ?, FechaFactura = ?, FechaVencimiento = ?,
+            Total = ?, Descripcion = ?, EstadoFactura = ?
         WHERE Id = ?
     """, (
-        proveedor, tipo_id, numero_id, numero_factura,
-        fecha_factura_dt.strftime("%Y-%m-%d"), total, descripcion, factura_id
+        proveedor_id,
+        numero_factura,
+        fecha_dt.strftime("%Y-%m-%d"),
+        venc_dt.strftime("%Y-%m-%d"),
+        total,
+        descripcion,
+        estado_factura,
+        factura_id
     ))
-    flash("Factura actualizada correctamente.", "success")
 
+    flash("Factura actualizada correctamente.", "success")
     return redirect(url_for("proveedores_page",
                             page=request.args.get("page", 1),
-                            search=request.args.get("search", "")))
+                            search=request.args.get("search", ""),
+                            periodo=request.args.get("periodo", datetime.today().strftime("%Y-%m"))))
+
 
 
 
@@ -2763,9 +2797,21 @@ def registrar_venta_caja():
 
     except Exception as e:
         conn.rollback()
-        return jsonify({"ok": False, "msg": str(e)}), 500
+        error_msg = str(e)
+
+        # Detectar error de consecutivo duplicado
+        if "UQ_Ventas" in error_msg or "duplicate key" in error_msg:
+            return jsonify({
+                "ok": False,
+                "msg": "El consecutivo ya fue utilizado. Actualice el consecutivo en la tabla Consecutivos."
+            }), 400
+
+        # Otros errores
+        return jsonify({"ok": False, "msg": error_msg}), 500
+
     finally:
         conn.close()
+
 
 
 
@@ -3093,17 +3139,19 @@ def generar_pdf_factura_electronica(venta_id):
 
     return response
 
-
 # ---------------- ROUTES: INVENTARIOS ----------------
 @app.route("/inventarios", methods=["GET", "POST"])
 @require_permission("INVENTARIOS", "ver")
 def inventarios_page():
+
+    # ---------------- VALIDAR LOGIN ----------------
     if g.user is None:
         return redirect(url_for("login_page"))
 
+    # ---------------- MENÚ POR ROL ----------------
     menu = get_menu_for_role(session["rol_id"])
 
-    # CARGAR CATEGORÍAS
+    # ---------------- CARGAR CATEGORÍAS ----------------
     categorias = query_all("""
         SELECT Id, NombreCategoria
         FROM CategoriasInventario
@@ -3111,34 +3159,54 @@ def inventarios_page():
         ORDER BY NombreCategoria
     """)
 
-    # CREAR NUEVO PRODUCTO
-    if request.method == "POST":
-        nombre = (request.form.get("nombre") or "").strip()
-        sku = (request.form.get("sku") or "").strip()
-        codigo_barras = (request.form.get("codigo_barras") or "").strip()
-        costo = (request.form.get("costo") or "").strip()
+    # ============================================================
+    # 🔥 LEER SWITCH IA_USAR_PROYECCION DESDE BD
+    # ============================================================
+    row_switch = query_one("""
+        SELECT ValorParametro 
+        FROM ParametrosNegocio
+        WHERE NombreParametro = 'IA_USAR_PROYECCION'
+    """)
+    usar_proyeccion = int(row_switch[0]) if row_switch else 0
+
+    # ============================================================
+    # 🔥 ACTUALIZAR SWITCH IA_USAR_PROYECCION (POST AJAX)
+    # ============================================================
+    if request.method == "POST" and "switch_ia" in request.form:
+
+        valor = 1 if request.form.get("valor") == "1" else 0
+
+        exec_sql("""
+            UPDATE ParametrosNegocio
+            SET ValorParametro = ?, FechaActualizacion = GETDATE()
+            WHERE NombreParametro = 'IA_USAR_PROYECCION'
+        """, (valor,))
+
+        flash("Proyección IA actualizada.", "success")
+        return redirect(url_for("inventarios_page"))
+
+    # ============================================================
+    # 🔥 CREAR NUEVO PRODUCTO
+    # ============================================================
+    if request.method == "POST" and request.form.get("nombre"):
+
+        nombre = request.form.get("nombre").strip()
+        sku = request.form.get("sku").strip()
+        codigo_barras = request.form.get("codigo_barras").strip()
+        costo = request.form.get("costo").strip()
         categoria_id = request.form.get("categoria_id")
+        tiene_fecha_vencimiento = 1 if request.form.get("tieneFechaVencimiento") else 0
 
-        tiene_fecha_vencimiento = 1 if request.form.get("tieneFechaVencimiento") == "on" else 0
-        activar_proyeccion = 1 if request.form.get("activar_proyeccion") else 0
-
+        # Validaciones
         if not nombre or not sku or not codigo_barras or not costo or not categoria_id:
-            flash("Todos los campos son obligatorios, incluida la categoría.", "danger")
+            flash("Todos los campos son obligatorios.", "danger")
             return redirect(url_for("inventarios_page"))
 
-        existe_sku = query_one("""
-            SELECT Id FROM Inventarios 
-            WHERE SKU = ? AND Estado = 1
-        """, (sku,))
-        if existe_sku:
-            flash("El SKU ya existe. No puede registrar el mismo producto dos veces.", "warning")
+        if query_one("SELECT Id FROM Inventarios WHERE SKU = ? AND Estado = 1", (sku,)):
+            flash("El SKU ya existe.", "warning")
             return redirect(url_for("inventarios_page"))
 
-        existe_cb = query_one("""
-            SELECT Id FROM Inventarios 
-            WHERE CodigoBarras = ? AND Estado = 1
-        """, (codigo_barras,))
-        if existe_cb:
+        if query_one("SELECT Id FROM Inventarios WHERE CodigoBarras = ? AND Estado = 1", (codigo_barras,)):
             flash("El código de barras ya existe.", "warning")
             return redirect(url_for("inventarios_page"))
 
@@ -3149,25 +3217,14 @@ def inventarios_page():
             VALUES (?, ?, ?, ?, 1, GETDATE(), ?, ?, ?)
         """, (nombre, sku, codigo_barras, costo, session["usuario_id"], categoria_id, tiene_fecha_vencimiento))
 
-        if activar_proyeccion:
-            inventario_id = query_one("SELECT TOP 1 Id FROM Inventarios ORDER BY Id DESC")[0]
-            exec_sql("""
-                INSERT INTO ProyeccionInventario (InventarioId, StockOptimo, FechaProyeccion)
-                VALUES (?, 0, GETDATE())
-            """, (inventario_id,))
-
         flash("Producto registrado correctamente.", "success")
         return redirect(url_for("inventarios_page"))
 
-    # BÚSQUEDA Y PAGINACIÓN
+    # ============================================================
+    # 🔍 BÚSQUEDA Y PAGINACIÓN
+    # ============================================================
     page_size = 10
-    try:
-        page = int(request.args.get("page", 1))
-        if page < 1:
-            page = 1
-    except ValueError:
-        page = 1
-
+    page = max(1, int(request.args.get("page", 1)))
     offset = (page - 1) * page_size
 
     search = (request.args.get("search") or "").strip()
@@ -3177,67 +3234,104 @@ def inventarios_page():
     if search:
         where += " AND (I.NombreProducto LIKE ? OR I.SKU LIKE ? OR I.CodigoBarras LIKE ?)"
         like = f"%{search}%"
-        params.extend([like, like, like])
+        params += [like, like, like]
 
-    total_row = query_one(f"SELECT COUNT(*) FROM Inventarios I WHERE {where}", tuple(params))
-    total_productos = int(total_row[0]) if total_row else 0
+    total_productos = query_one(
+        f"SELECT COUNT(*) FROM Inventarios I WHERE {where}", tuple(params)
+    )[0]
 
     total_pages = max(1, (total_productos + page_size - 1) // page_size)
-    if page > total_pages:
-        page = total_pages
-        offset = (page - 1) * page_size
 
-    # CONSULTA PRINCIPAL
+    total_stock = query_one(f"""
+        SELECT ISNULL(SUM(D.Cantidad), 0)
+        FROM Inventarios I
+        LEFT JOIN DetalleInventario D ON I.Id = D.InventarioId AND D.Estado = 1
+        WHERE {where}
+    """, tuple(params))[0]
+
+    # ============================================================
+    # 📦 CONSULTA PRINCIPAL (PAGINADA EN SQL)
+    # ============================================================
     rows = query_all(
         f"""
         SELECT I.Id, I.SKU, I.NombreProducto,
                C.NombreCategoria,
                ISNULL(SUM(D.Cantidad), 0) AS Stock,
                I.Costo,
-               ISNULL(P.StockOptimo, NULL) AS StockOptimo,
                I.FechaCreacion,
                I.TieneFechaVencimiento
         FROM Inventarios I
         LEFT JOIN CategoriasInventario C ON I.CategoriaInventarioId = C.Id
-        LEFT JOIN DetalleInventario D 
-            ON I.Id = D.InventarioId AND D.Estado = 1
-        LEFT JOIN ProyeccionInventario P 
-            ON I.Id = P.InventarioId
+        LEFT JOIN DetalleInventario D ON I.Id = D.InventarioId AND D.Estado = 1
         WHERE {where}
         GROUP BY I.Id, I.SKU, I.NombreProducto, C.NombreCategoria, 
-                 I.Costo, P.StockOptimo, I.FechaCreacion, I.TieneFechaVencimiento
+                 I.Costo, I.FechaCreacion, I.TieneFechaVencimiento
         ORDER BY I.FechaCreacion DESC, I.Id DESC
         OFFSET ? ROWS FETCH NEXT ? ROWS ONLY
         """,
         tuple(params + [offset, page_size])
     )
 
-    productos = []
-    total_stock = 0
+    # ============================================================
+    # 🧠 EJECUTAR MODELO DE INVENTARIOS (REGRESIÓN LINEAL)
+    # ============================================================
+    resultados = generar_resultados_inventario()
 
+    # Si por alguna razón viene vacío, evitar error
+    rotacion = resultados.get("rotacion_productos", []) if resultados else []
+    mapa_resultados = {r["InventarioId"]: r for r in rotacion}
+
+    # ============================================================
+    # 🧩 ARMAR LISTA FINAL DE PRODUCTOS PARA EL HTML
+    # ============================================================
+    productos = []
     for r in rows:
+        inv_id = r[0]
         stock = int(r[4]) if r[4] is not None else 0
         costo = float(r[5]) if r[5] is not None else 0.0
-        precio_total = costo * stock
-        proyeccion_ia = r[6] if r[6] is not None else "Sin datos"
-        fecha_creacion = r[7].strftime("%Y-%m-%d %H:%M") if r[7] else ""
-        tiene_fecha_vencimiento = bool(r[8])
 
-        total_stock += stock
+        datos_ia = mapa_resultados.get(inv_id, {})
+
+        calidad = datos_ia.get("CalidadModelo", "Sin datos")
+        error = datos_ia.get("ErrorModelo", 0)
+        stock_optimo = int(datos_ia.get("StockOptimo", 0))
+
+        # ---------------- PROYECCIÓN IA (TEXTO SIMPLE) ----------------
+        if usar_proyeccion == 0:
+            proyeccion_ia = "Sin proyección"
+        else:
+            if calidad == "Sin datos":
+                proyeccion_ia = "Sin datos"
+            elif calidad == "Malo":
+                proyeccion_ia = "Sin proyección"
+            else:
+                proyeccion_ia = f"{stock_optimo} unidades"
+
+        # ---------------- VALORACIÓN (TEXTO) ----------------
+        # Puedes dejarla tal cual o mapearla a algo más visual
+        valoracion = calidad
 
         productos.append({
-            "id": r[0],
+            "id": inv_id,
             "sku": r[1],
             "nombre": r[2],
             "categoria": r[3],
             "stock": stock,
+            "stock_optimo": stock_optimo,
             "costo": costo,
-            "precio_total": precio_total,
+            "precio_total": costo * stock,
+            "fecha_creacion": r[6].strftime("%Y-%m-%d %H:%M") if r[6] else "",
+            "tiene_fecha_vencimiento": bool(r[7]),
+
+            # Campos para la vista
             "proyeccion_ia": proyeccion_ia,
-            "fecha_creacion": fecha_creacion,
-            "tiene_fecha_vencimiento": tiene_fecha_vencimiento
+            "valoracion": valoracion,
+            "error_modelo": error
         })
 
+    # ============================================================
+    # 📄 RENDERIZAR PLANTILLA
+    # ============================================================
     return render_template(
         "inventarios.html",
         menu=menu,
@@ -3247,8 +3341,10 @@ def inventarios_page():
         total_productos=total_productos,
         total_stock=total_stock,
         search=search,
-        categorias=categorias
+        categorias=categorias,
+        usar_proyeccion=usar_proyeccion
     )
+
 
 
 # ---------------- INACTIVAR PRODUCTO ----------------
@@ -3270,8 +3366,13 @@ def editar_inventario(inventario_id):
     if g.user is None:
         return redirect(url_for("login_page"))
 
+    # Capturar parámetros de paginación y búsqueda
+    page = request.args.get("page", 1)
+    search = request.args.get("search", "")
+
     menu = get_menu_for_role(session["rol_id"])
 
+    # Obtener datos del producto actual
     row = query_one("""
         SELECT I.Id, I.NombreProducto, I.SKU, I.CodigoBarras, I.Costo,
                C.NombreCategoria AS CategoriaNombre, I.CategoriaInventarioId,
@@ -3283,7 +3384,7 @@ def editar_inventario(inventario_id):
 
     if not row:
         flash("Producto no encontrado o inactivo.", "warning")
-        return redirect(url_for("inventarios_page"))
+        return redirect(url_for("inventarios_page", page=page, search=search))
 
     producto = {
         "id": row[0],
@@ -3303,6 +3404,22 @@ def editar_inventario(inventario_id):
         ORDER BY NombreCategoria
     """)
 
+    # ---------------- NAVEGACIÓN ENTRE REGISTROS ----------------
+    prev_row = query_one("""
+        SELECT TOP 1 Id FROM Inventarios
+        WHERE Id < ? AND Estado = 1
+        ORDER BY Id DESC
+    """, (inventario_id,))
+    next_row = query_one("""
+        SELECT TOP 1 Id FROM Inventarios
+        WHERE Id > ? AND Estado = 1
+        ORDER BY Id ASC
+    """, (inventario_id,))
+
+    prev_id = prev_row[0] if prev_row else None
+    next_id = next_row[0] if next_row else None
+
+    # ---------------- ACTUALIZACIÓN DE PRODUCTO ----------------
     if request.method == "POST":
         nombre = (request.form.get("nombre_edit") or "").strip()
         sku = (request.form.get("sku_edit") or "").strip()
@@ -3312,7 +3429,7 @@ def editar_inventario(inventario_id):
 
         if not nombre or not sku or not codigo_barras or not costo or not categoria_id:
             flash("Todos los campos del producto son obligatorios.", "danger")
-            return redirect(url_for("editar_inventario", inventario_id=inventario_id))
+            return redirect(url_for("editar_inventario", inventario_id=inventario_id, page=page, search=search))
 
         existe_sku = query_one("""
             SELECT Id FROM Inventarios
@@ -3320,7 +3437,7 @@ def editar_inventario(inventario_id):
         """, (sku, inventario_id))
         if existe_sku:
             flash("El SKU ya existe en otro producto.", "warning")
-            return redirect(url_for("editar_inventario", inventario_id=inventario_id))
+            return redirect(url_for("editar_inventario", inventario_id=inventario_id, page=page, search=search))
 
         existe_cb = query_one("""
             SELECT Id FROM Inventarios
@@ -3328,7 +3445,7 @@ def editar_inventario(inventario_id):
         """, (codigo_barras, inventario_id))
         if existe_cb:
             flash("El código de barras ya existe en otro producto.", "warning")
-            return redirect(url_for("editar_inventario", inventario_id=inventario_id))
+            return redirect(url_for("editar_inventario", inventario_id=inventario_id, page=page, search=search))
 
         exec_sql("""
             UPDATE Inventarios
@@ -3338,8 +3455,9 @@ def editar_inventario(inventario_id):
         """, (nombre, sku, codigo_barras, costo, categoria_id, inventario_id))
 
         flash("Producto actualizado correctamente.", "success")
-        return redirect(url_for("editar_inventario", inventario_id=inventario_id))
+        return redirect(url_for("inventarios_page", page=page, search=search))
 
+    # ---------------- LOTES ----------------
     lotes = query_all("""
         SELECT Id, NumeroLote, Cantidad, FechaVencimiento, Estado
         FROM DetalleInventario
@@ -3349,14 +3467,20 @@ def editar_inventario(inventario_id):
 
     total_stock = sum(int(l[2] or 0) for l in lotes)
 
+    # ---------------- RENDER ----------------
     return render_template(
         "editar_inventario.html",
         menu=menu,
         producto=producto,
         lotes=lotes,
         total_stock=total_stock,
-        categorias=categorias
+        categorias=categorias,
+        page=page,
+        search=search,
+        prev_id=prev_id,
+        next_id=next_id
     )
+
 
 
 # ---------------- AGREGAR LOTE ----------------
@@ -3593,6 +3717,133 @@ def editar_categoria_inventario(cat_id):
     return redirect(url_for("categorias_inventario_page"))
 
 
+# ---------------- ROUTES: Tipos de Registro ----------------
+
+@app.route("/tipos_registro", methods=["GET", "POST"])
+@require_permission("TIPOS_REGISTRO", "ver")
+def tipos_registro_page():
+
+    if g.user is None:
+        return redirect(url_for("login_page"))
+
+    menu = get_menu_for_role(session["rol_id"])
+
+    # Parámetros
+    search = (request.args.get("search") or "").strip()
+    page_size = 10
+    page = max(1, int(request.args.get("page", 1)))
+    offset = (page - 1) * page_size
+
+    # Filtro
+    where = "Estado = 1"
+    params = []
+
+    if search:
+        where += " AND NombreTipo LIKE ?"
+        params.append(f"%{search}%")
+
+    # Total registros
+    total_tipos = query_one(
+        f"SELECT COUNT(*) FROM TiposRegistro WHERE {where}",
+        tuple(params)
+    )[0]
+
+    total_pages = max(1, (total_tipos + page_size - 1) // page_size)
+
+    # Consulta principal
+    tipos = query_all(f"""
+        SELECT Id, NombreTipo, Descripcion, UsuarioId, FechaCreacion, Estado
+        FROM TiposRegistro
+        WHERE {where}
+        ORDER BY FechaCreacion DESC
+        OFFSET ? ROWS FETCH NEXT ? ROWS ONLY
+    """, tuple(params + [offset, page_size]))
+
+    # Crear nuevo tipo
+    if request.method == "POST":
+        nombre = (request.form.get("nombre") or "").strip()
+        descripcion = (request.form.get("descripcion") or "").strip()
+        usuario_id = session["user_id"]
+
+        if not nombre:
+            flash("El nombre del tipo de registro es obligatorio.", "danger")
+            return redirect(url_for("tipos_registro_page"))
+
+        # 🔸 Validar unicidad
+        existe = query_one("SELECT COUNT(*) FROM TiposRegistro WHERE NombreTipo = ? AND Estado = 1", (nombre,))[0]
+        if existe > 0:
+            flash("Ya existe un tipo de registro con ese nombre.", "warning")
+            return redirect(url_for("tipos_registro_page"))
+
+        exec_sql("""
+            INSERT INTO TiposRegistro (NombreTipo, Descripcion, UsuarioId)
+            VALUES (?, ?, ?)
+        """, (nombre, descripcion, usuario_id))
+
+        flash("Tipo de registro creado correctamente.", "success")
+        return redirect(url_for("tipos_registro_page"))
+
+    return render_template(
+        "tipos_registro.html",
+        menu=menu,
+        tipos=tipos,
+        total_tipos=total_tipos,
+        total_pages=total_pages,
+        page=page,
+        search=search
+    )
+
+
+# ---------------- EDITAR TIPO DE REGISTRO (POST desde modal) ----------------
+@app.route("/tipos_registro/editar/<int:tipo_id>", methods=["POST"])
+@require_permission("TIPOS_REGISTRO", "editar")
+def editar_tipo_registro(tipo_id):
+
+    page = request.args.get("page", 1)
+    search = request.args.get("search", "")
+
+    nombre = (request.form.get("nombre_edit") or "").strip()
+    descripcion = (request.form.get("descripcion_edit") or "").strip()
+
+    if not nombre:
+        flash("El nombre del tipo de registro es obligatorio.", "danger")
+        return redirect(url_for("tipos_registro_page", page=page, search=search))
+
+    # 🔸 Validar unicidad (excluyendo el mismo registro)
+    existe = query_one("SELECT COUNT(*) FROM TiposRegistro WHERE NombreTipo = ? AND Id <> ? AND Estado = 1", (nombre, tipo_id))[0]
+    if existe > 0:
+        flash("Ya existe otro tipo de registro con ese nombre.", "warning")
+        return redirect(url_for("tipos_registro_page", page=page, search=search))
+
+    exec_sql("""
+        UPDATE TiposRegistro
+        SET NombreTipo = ?, Descripcion = ?
+        WHERE Id = ?
+    """, (nombre, descripcion, tipo_id))
+
+    flash("Tipo de registro actualizado correctamente.", "success")
+    return redirect(url_for("tipos_registro_page", page=page, search=search))
+
+
+# ---------------- INACTIVAR TIPO DE REGISTRO ----------------
+@app.route("/tipos_registro/inactivar/<int:tipo_id>", methods=["POST"])
+@require_permission("TIPOS_REGISTRO", "inactivar")
+def inactivar_tipo_registro(tipo_id):
+
+    page = request.args.get("page", 1)
+    search = request.args.get("search", "")
+
+    exec_sql("""
+        UPDATE TiposRegistro
+        SET Estado = 0
+        WHERE Id = ?
+    """, (tipo_id,))
+
+    flash("Tipo de registro inactivado correctamente.", "success")
+    return redirect(url_for("tipos_registro_page", page=page, search=search))
+
+
+
 
 # ---------------- ROUTES: Dashboard Ventas ----------------
 
@@ -3607,9 +3858,17 @@ def dashboard_gastos():
     return render_template("dashboard_gastos.html")
 
 # ---------------- ROUTES: Dashboard Inventarios ----------------
+
 @app.route("/inventarios/dashboard")
+@require_permission("INVENTARIOS", "ver")
 def dashboard_inventarios():
-    return render_template("dashboard_inventarios.html")
+
+    kpis = generar_kpis_inventario()
+
+    return render_template(
+        "dashboard_inventarios.html",
+        kpis=kpis
+    )
 
 # ---------------- ROUTES: Dashboard Facturas Proveedores ----------------
 @app.route("/facturas_proveedores/dashboard")
