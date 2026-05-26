@@ -10,15 +10,13 @@
 
       <!-- 🔥 SWITCH PROYECCIÓN IA -->
       <form method="POST" id="formProyeccionIA" class="me-3">
-        <input type="hidden" name="switch_ia" value="1">
         <input type="hidden" name="valor" id="valorProyeccion">
 
         <div class="form-check form-switch">
           <input class="form-check-input"
-                type="checkbox"
-                id="switchProyeccionIA"
-                onchange="enviarSwitchIA(this.checked)"
-                {% if usar_proyeccion == 1 %} checked {% endif %}>
+                 type="checkbox"
+                 id="switchProyeccionIA"
+                 onchange="enviarSwitchIA(this.checked)">
           <label class="form-check-label fw-bold" for="switchProyeccionIA">
             Proyección IA
           </label>
@@ -91,9 +89,9 @@
   <!-- Indicadores -->
   <div class="d-flex justify-content-between align-items-center mb-2">
     <h6 class="mb-0">Total Registros: {{ total_productos }}</h6>
-      <small class="text-primary fw-bold">
-        Total de Inventario: {{ total_stock }} unidades
-      </small>
+    <small class="text-primary fw-bold">
+      Total de Inventario: {{ total_stock }} unidades
+    </small>
   </div>
 
   <!-- Tabla -->
@@ -106,7 +104,7 @@
           <th>SKU</th>
           <th>Producto</th>
           <th>Stock</th>
-          <th>Proyección IA</th>
+          <th>Stock Óptimo</th>
           <th>Valoración</th>
           <th>Valor Unitario</th>
           <th>Precio Total</th>
@@ -122,9 +120,11 @@
           <td>{{ p.sku }}</td>
           <td>{{ p.nombre }}</td>
 
-          <!-- Stock con validación de color -->
+          <!-- STOCK con lógica corregida -->
           {% if usar_proyeccion == 1 %}
-            {% if p.stock < p.stock_optimo %}
+            {% if p.valoracion == "Sin datos suficientes" %}
+              <td class="fw-normal text-dark">{{ p.stock }}</td>
+            {% elif p.stock < p.stock_optimo %}
               <td class="fw-bold text-danger">
                 <i class="bi bi-arrow-down-circle-fill me-1"></i>{{ p.stock }}
               </td>
@@ -141,35 +141,56 @@
             <td>{{ p.stock }}</td>
           {% endif %}
 
-          <!-- 🔥 PROYECCIÓN IA (NUEVA LÓGICA) -->
+          <!-- PROYECCIÓN IA -->
           <td>
-            {% if p.proyeccion_ia == "Sin proyección" %}
-              <span class="badge bg-dark">Sin proyección</span>
-
-            {% elif p.proyeccion_ia == "Sin datos" %}
-              <span class="badge bg-secondary">Sin datos</span>
-
+            {% if usar_proyeccion == 0 %}
+              <span class="badge bg-dark">
+                <i class="bi bi-power me-1"></i>OFF
+              </span>
             {% else %}
-              <span class="badge bg-primary">{{ p.proyeccion_ia }}</span>
+              {% if p.valoracion == "Sin datos suficientes" %}
+                <span class="badge bg-secondary">
+                  <i class="bi bi-info-circle me-1"></i>Sin datos suficientes
+                </span>
+              {% else %}
+                <span class="badge bg-primary">
+                  <i class="bi bi-graph-up-arrow me-1"></i>{{ p.proyeccion_ia }}
+                </span>
+              {% endif %}
             {% endif %}
           </td>
 
-          <!-- 🔥 VALORACIÓN DEL MODELO -->
+          <!-- VALORACIÓN DEL MODELO -->
           <td>
-            {% if p.valoracion == "Bueno" %}
-              <span class="badge bg-success">Bueno</span>
+            {% if usar_proyeccion == 0 %}
+              <span class="badge bg-dark">
+                <i class="bi bi-power me-1"></i>OFF
+              </span>
 
-            {% elif p.valoracion == "Aceptable" %}
-              <span class="badge bg-info text-dark">Aceptable</span>
+            {% elif p.valoracion == "Confiable" %}
+              <span class="badge bg-success">
+                <i class="bi bi-check-circle me-1"></i>Confiable
+              </span>
 
-            {% elif p.valoracion == "Regular" %}
-              <span class="badge bg-warning text-dark">Regular</span>
+            {% elif p.valoracion == "Usar con precaución" %}
+              <span class="badge bg-warning text-dark">
+                <i class="bi bi-exclamation-triangle me-1"></i>Usar con precaución
+              </span>
 
-            {% elif p.valoracion == "Malo" %}
-              <span class="badge bg-danger">Malo</span>
+            {% elif p.valoracion == "Revisión recomendada" %}
+              <span class="badge bg-info text-dark">
+                <i class="bi bi-search me-1"></i>Revisión recomendada
+              </span>
+
+            {% elif p.valoracion == "No confiable" %}
+              <span class="badge bg-danger">
+                <i class="bi bi-x-circle me-1"></i>No confiable
+              </span>
 
             {% else %}
-              <span class="badge bg-secondary">Sin datos</span>
+              <span class="badge bg-secondary">
+                <i class="bi bi-info-circle me-1"></i>Sin datos suficientes
+              </span>
             {% endif %}
           </td>
 
@@ -179,8 +200,8 @@
 
           <td class="text-end">
             <div class="btn-group" role="group">
-              <a href="{{ url_for('editar_inventario', inventario_id=p.id, page=page, search=search) }}" 
-                class="btn btn-sm btn-outline-secondary">
+              <a href="{{ url_for('editar_inventario', inventario_id=p.id, page=page, search=search) }}"
+                 class="btn btn-sm btn-outline-secondary">
                 Editar
               </a>
 
@@ -221,17 +242,11 @@
 
 </div>
 
-<!-- 🔥 SCRIPT SWITCH IA -->
+<!-- SCRIPT SWITCH IA -->
 <script>
 function enviarSwitchIA(estado) {
-    const valor = estado ? "1" : "0";
-
-    fetch("/inventarios", {
-        method: "POST",
-        headers: {"Content-Type": "application/x-www-form-urlencoded"},
-        body: `switch_ia=1&valor=${valor}`
-    })
-    .then(() => location.reload());
+    document.getElementById("valorProyeccion").value = estado ? "1" : "0";
+    document.getElementById("formProyeccionIA").submit();
 }
 
 document.addEventListener("DOMContentLoaded", function() {

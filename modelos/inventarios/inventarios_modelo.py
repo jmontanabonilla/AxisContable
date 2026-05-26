@@ -16,7 +16,7 @@ from db import query_all_flat, exec_sql
 def safe_float(value):
     try:
         if value is None:
-            return 0.0
+           return 0.0
         s = str(value).strip()
         if s == "" or s.lower() == "nan":
             return 0.0
@@ -29,20 +29,37 @@ def calcular_rmse(y_real, y_pred):
     """Error RMSE del modelo."""
     if len(y_real) < 2:
         return 0
-    return float(np.sqrt(np.mean((y_real - y_pred) ** 2)))
+    rmse = np.sqrt(np.mean((y_real - y_pred) ** 2))
+    return float(round(rmse, 6))  # evita falsos ceros
 
 
-def clasificar_calidad(error):
-    """Clasifica el modelo según el error."""
-    if error == 0:
-        return "Sin datos"
+def clasificar_calidad(error, cantidad_datos, demanda_futura):
+    """
+    Clasifica la calidad del modelo de forma comprensible para el usuario.
+    - Si hay menos de 2 datos → Sin datos suficientes
+    - Si error == 0 y demanda_futura <= 1 → Sin datos suficientes
+    - Si error == 0 y demanda_futura > 1 → Confiable
+    - Si error < 0.5 → Confiable
+    - Si error < 1.0 → Usar con precaución
+    - Si error < 2.0 → Revisión recomendada
+    - Si error >= 2.0 → No confiable
+    """
+    if cantidad_datos < 2:
+        return "Sin datos suficientes"
+
+    if error == 0 and demanda_futura <= 1:
+        return "Sin datos suficientes"
+
+    if error == 0 and demanda_futura > 1:
+        return "Confiable"
+
     if error < 0.5:
-        return "Bueno"
+        return "Confiable"
     if error < 1.0:
-        return "Aceptable"
+        return "Usar con precaución"
     if error < 2.0:
-        return "Regular"
-    return "Malo"
+        return "Revisión recomendada"
+    return "No confiable"
 
 
 # ============================================================
@@ -117,7 +134,6 @@ def preparar_dataset_inventario():
     df["CantidadDia"] = df["CantidadDia"].fillna(0)
     return df
 
-
 # ============================================================
 # 2. CONSOLIDACIÓN FINAL
 # ============================================================
@@ -161,34 +177,38 @@ def generar_resultados_inventario():
 
         y_real = grupo["CantidadDia"].values.astype(float)
 
-        # CASO 1: Sin datos suficientes
+        # ============================================================
+        # CASO 1: SIN DATOS SUFICIENTES
+        # ============================================================
         if len(y_real) < 2:
             demanda_futura = 0
             error_modelo = 0
-            calidad = "Sin datos"
+            calidad = "Sin datos suficientes"
             metodo = "Regla"
-            stock_optimo = 0
+            stock_optimo = max(0, round(grupo["StockActual"].iloc[0] * factor_seguridad))
 
         else:
-            # Entrenar regresión
+            # ============================================================
+            # CASO 2: MODELO IA
+            # ============================================================
             X = np.arange(len(y_real)).reshape(-1, 1)
             modelo = LinearRegression()
             modelo.fit(X, y_real)
 
             demanda_dia = float(modelo.predict([[len(y_real)]])[0])
-            demanda_futura = demanda_dia * horizonte_futuro if usar_proyeccion else 0
+            demanda_futura = max(0, demanda_dia * horizonte_futuro)
 
-            # Error RMSE
             y_pred = modelo.predict(X)
             error_modelo = calcular_rmse(y_real, y_pred)
 
-            # Clasificación
-            calidad = clasificar_calidad(error_modelo)
+            calidad = clasificar_calidad(error_modelo, len(y_real), demanda_futura)
 
-            # Selección del método
-            if calidad == "Malo":
+            # ============================================================
+            # NUEVA LÓGICA DE STOCK ÓPTIMO
+            # ============================================================
+            if calidad in ["Sin datos suficientes", "No confiable"]:
                 metodo = "Regla"
-                stock_optimo = round(grupo["StockActual"].iloc[0] * factor_seguridad)
+                stock_optimo = max(0, round(grupo["StockActual"].iloc[0] * factor_seguridad))
             else:
                 metodo = "IA"
                 stock_optimo = max(0, round(demanda_futura * factor_seguridad))
@@ -211,34 +231,38 @@ def generar_resultados_inventario():
     # ---------------- GUARDAR PROYECCIÓN ----------------
     if usar_proyeccion and not df_final.empty:
         for _, row in df_final.iterrows():
+
+            demanda_futura = max(0, safe_float(row["DemandaFutura"]))
+            stock_optimo = max(0, safe_float(row["StockOptimo"]))
+
             exec_sql("""
                 MERGE INTO ProyeccionInventario AS target
                 USING (SELECT ? AS InventarioId) AS source
                 ON target.InventarioId = source.InventarioId
                 WHEN MATCHED THEN
                     UPDATE SET StockOptimo = ?, FechaProyeccion = GETDATE(),
-                               MetodoIA = ?, ErrorModelo = ?, Tendencia = ?,
+                               MetodoIA = ?, ErrorModelo = ?, CalidadModelo = ?,
                                DemandaEsperada = ?, FactorSeguridad = ?,
                                TipoProyeccion = 'Futuro', UltimaActualizacion = GETDATE()
                 WHEN NOT MATCHED THEN
                     INSERT (InventarioId, StockOptimo, FechaProyeccion, MetodoIA,
-                            ErrorModelo, Tendencia, DemandaEsperada, FactorSeguridad, TipoProyeccion)
+                            ErrorModelo, CalidadModelo, DemandaEsperada, FactorSeguridad, TipoProyeccion)
                     VALUES (?, ?, GETDATE(), ?, ?, ?, ?, ?, 'Futuro');
             """, (
                 int(row["InventarioId"]),
-                safe_float(row["StockOptimo"]),
+                stock_optimo,
                 row["MetodoProyeccion"],
                 safe_float(row["ErrorModelo"]),
                 row["CalidadModelo"],
-                safe_float(row["DemandaFutura"]),
+                demanda_futura,
                 safe_float(factor_seguridad),
 
                 int(row["InventarioId"]),
-                safe_float(row["StockOptimo"]),
+                stock_optimo,
                 row["MetodoProyeccion"],
                 safe_float(row["ErrorModelo"]),
                 row["CalidadModelo"],
-                safe_float(row["DemandaFutura"]),
+                demanda_futura,
                 safe_float(factor_seguridad)
             ))
 
@@ -248,7 +272,6 @@ def generar_resultados_inventario():
 
     total_activos = int((df_final["StockActual"] > 0).sum())
 
-    # Productos por vencer
     hoy = datetime.now()
     limite = hoy + timedelta(days=dias_alerta_venc)
 
@@ -260,18 +283,15 @@ def generar_resultados_inventario():
 
     por_vencer = len(df_venc)
 
-    # Días estimados de stock
     df_final["DiasStock"] = df_final.apply(
         lambda r: round(r["StockActual"] / r["DemandaFutura"], 1)
         if r["DemandaFutura"] > 0 else None,
         axis=1
     )
 
-    # Top alertas
     df_final["Criticidad"] = df_final["StockActual"] - df_final["StockOptimo"]
     top_alertas = df_final.sort_values("Criticidad").head(5).to_dict(orient="records")
 
-    # Vencimientos por mes
     df_v = df[
         (df["TieneFechaVencimiento"] == 1) &
         (df["FechaVencimiento"].notna())
@@ -283,16 +303,23 @@ def generar_resultados_inventario():
     else:
         vencimientos_por_mes = {}
 
-    # Stock por categoría
-    stock_por_categoria = (
+    # ============================================================
+    # 🔥 STOCK POR CATEGORÍA — TOP 10 ORDENADO COMO LISTA
+    # ============================================================
+    stock_por_categoria_df = (
         df_final.groupby("Categoria")["StockActual"]
         .sum()
         .sort_values(ascending=False)
         .head(10)
-        .to_dict()
+        .reset_index()
     )
 
-    # Rotación
+    stock_por_categoria = [
+        {"Categoria": row["Categoria"], "Stock": row["StockActual"]}
+        for _, row in stock_por_categoria_df.iterrows()
+    ]
+
+    # ---------------- ROTACIÓN ----------------
     top_rotacion = df_final.sort_values("DemandaFutura", ascending=False).head(10).to_dict(orient="records")
 
     return {

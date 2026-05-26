@@ -16,10 +16,12 @@ def generar_kpis_inventario():
     - Alertas de inventario (TOP 5)
     - Vencimientos por mes
     - Parámetros dinámicos (margen, días alerta vencimiento)
+    - Dataset completo de rotación (incluye StockOptimo y DemandaEsperada)
     """
 
     r = generar_resultados_inventario()
 
+    # Si no hay datos, devolver estructura vacía
     if not r:
         return {
             "total_productos": 0,
@@ -34,9 +36,11 @@ def generar_kpis_inventario():
             "top_rotacion": [],
             "dias_stock": [],
             "top_alertas": [],
-            "vencimientos_por_mes": {}
+            "vencimientos_por_mes": {},
+            "rotacion_productos": []
         }
 
+    # Retornar KPIs completos
     return {
         # ---------------- KPIs PRINCIPALES ----------------
         "total_productos": r["total_productos"],
@@ -50,10 +54,15 @@ def generar_kpis_inventario():
         "por_vencer": r["por_vencer"],
         "dias_alerta_venc": r["dias_alerta_venc"],
 
-        # ---------------- GRÁFICOS ----------------
+        # ---------------- GRÁFICOS / DATASETS ----------------
         "stock_por_categoria": r["stock_por_categoria"],     # TOP 10
-        "top_rotacion": r["top_rotacion"],                   # TOP 10
+        "top_rotacion": r["top_rotacion"],                   # TOP 10 por demanda futura
         "dias_stock": r["dias_stock"],                       # Lista completa
-        "top_alertas": r["top_alertas"],                     # TOP 5
-        "vencimientos_por_mes": r["vencimientos_por_mes"]    # Línea por mes
+        "top_alertas": r["top_alertas"],                     # TOP 5 por criticidad
+        "vencimientos_por_mes": r["vencimientos_por_mes"],   # Conteo por mes
+
+        # ---------------- DATASET DETALLADO ----------------
+        # Incluye por producto:
+        # StockActual, StockOptimo, DemandaFutura, ErrorModelo, CalidadModelo, etc.
+        "rotacion_productos": r["rotacion_productos"]
     }

@@ -17,12 +17,6 @@ import functools
 import pdfkit
 import locale
 import os
-import locale
-import os
-import webbrowser
-from threading import Timer
-import webbrowser
-from threading import Timer
 
 
 # ---------------- CONFIG ----------------
@@ -3145,7 +3139,11 @@ def generar_pdf_factura_electronica(venta_id):
 
     return response
 
-# ---------------- ROUTES: INVENTARIOS ----------------
+
+# ============================================================
+# ROUTE: INVENTARIOS
+# ============================================================
+
 @app.route("/inventarios", methods=["GET", "POST"])
 @require_permission("INVENTARIOS", "ver")
 def inventarios_page():
@@ -3173,12 +3171,12 @@ def inventarios_page():
         FROM ParametrosNegocio
         WHERE NombreParametro = 'IA_USAR_PROYECCION'
     """)
-    usar_proyeccion = int(row_switch[0]) if row_switch else 0
+    usar_proyeccion_real = int(row_switch[0]) if row_switch else 0
 
     # ============================================================
-    # 🔥 ACTUALIZAR SWITCH IA_USAR_PROYECCION (POST AJAX)
+    # 🔥 ACTUALIZAR SWITCH IA_USAR_PROYECCION
     # ============================================================
-    if request.method == "POST" and "switch_ia" in request.form:
+    if request.method == "POST" and "valor" in request.form:
 
         valor = 1 if request.form.get("valor") == "1" else 0
 
@@ -3188,6 +3186,10 @@ def inventarios_page():
             WHERE NombreParametro = 'IA_USAR_PROYECCION'
         """, (valor,))
 
+        # Ejecutar modelo inmediatamente si se activa
+        if valor == 1:
+            generar_resultados_inventario()
+
         flash("Proyección IA actualizada.", "success")
         return redirect(url_for("inventarios_page"))
 
@@ -3195,7 +3197,6 @@ def inventarios_page():
     # 🔥 CREAR NUEVO PRODUCTO
     # ============================================================
     if request.method == "POST" and request.form.get("nombre"):
-
         nombre = request.form.get("nombre").strip()
         sku = request.form.get("sku").strip()
         codigo_barras = request.form.get("codigo_barras").strip()
@@ -3203,7 +3204,6 @@ def inventarios_page():
         categoria_id = request.form.get("categoria_id")
         tiene_fecha_vencimiento = 1 if request.form.get("tieneFechaVencimiento") else 0
 
-        # Validaciones
         if not nombre or not sku or not codigo_barras or not costo or not categoria_id:
             flash("Todos los campos son obligatorios.", "danger")
             return redirect(url_for("inventarios_page"))
@@ -3256,7 +3256,7 @@ def inventarios_page():
     """, tuple(params))[0]
 
     # ============================================================
-    # 📦 CONSULTA PRINCIPAL (PAGINADA EN SQL)
+    # 📦 CONSULTA PRINCIPAL (PAGINADA)
     # ============================================================
     rows = query_all(
         f"""
@@ -3279,16 +3279,28 @@ def inventarios_page():
     )
 
     # ============================================================
-    # 🧠 EJECUTAR MODELO DE INVENTARIOS (REGRESIÓN LINEAL)
+    # 🧠 LEER PROYECCIÓN DESDE BD
     # ============================================================
-    resultados = generar_resultados_inventario()
-
-    # Si por alguna razón viene vacío, evitar error
-    rotacion = resultados.get("rotacion_productos", []) if resultados else []
-    mapa_resultados = {r["InventarioId"]: r for r in rotacion}
+    if usar_proyeccion_real == 1:
+        proyecciones = query_all("""
+            SELECT InventarioId, StockOptimo, ErrorModelo, CalidadModelo, DemandaEsperada
+            FROM ProyeccionInventario
+            WHERE TipoProyeccion = 'Futuro'
+        """)
+        mapa_resultados = {
+            r[0]: {
+                "StockOptimo": r[1],
+                "ErrorModelo": r[2],
+                "CalidadModelo": r[3],
+                "DemandaEsperada": r[4]
+            }
+            for r in proyecciones
+        }
+    else:
+        mapa_resultados = {}
 
     # ============================================================
-    # 🧩 ARMAR LISTA FINAL DE PRODUCTOS PARA EL HTML
+    # 🧩 ARMAR LISTA FINAL PARA HTML
     # ============================================================
     productos = []
     for r in rows:
@@ -3298,24 +3310,34 @@ def inventarios_page():
 
         datos_ia = mapa_resultados.get(inv_id, {})
 
-        calidad = datos_ia.get("CalidadModelo", "Sin datos")
-        error = datos_ia.get("ErrorModelo", 0)
+        # ---------------- PROYECCIÓN IA ----------------
         stock_optimo = int(datos_ia.get("StockOptimo", 0))
+        stock_optimo = max(0, stock_optimo)
 
-        # ---------------- PROYECCIÓN IA (TEXTO SIMPLE) ----------------
-        if usar_proyeccion == 0:
-            proyeccion_ia = "Sin proyección"
+        error_modelo = float(datos_ia.get("ErrorModelo", 0))
+        calidad = datos_ia.get("CalidadModelo", "Sin datos suficientes")
+
+        demanda_esperada = datos_ia.get("DemandaEsperada", 0)
+        demanda_esperada = max(0, float(demanda_esperada))
+
+        # ---------------- PROYECCIÓN IA (SIEMPRE NÚMERO) ----------------
+        if usar_proyeccion_real == 0:
+            proyeccion_ia = "OFF"
         else:
-            if calidad == "Sin datos":
-                proyeccion_ia = "Sin datos"
-            elif calidad == "Malo":
-                proyeccion_ia = "Sin proyección"
-            else:
-                proyeccion_ia = f"{stock_optimo} unidades"
+            proyeccion_ia = f"{stock_optimo} unidades"
 
-        # ---------------- VALORACIÓN (TEXTO) ----------------
-        # Puedes dejarla tal cual o mapearla a algo más visual
-        valoracion = calidad
+        # ---------------- VALORACIÓN ----------------
+        if usar_proyeccion_real == 0:
+            valoracion = "OFF"
+        else:
+            # Si la demanda es muy baja o el modelo fue marcado como no confiable/sin datos,
+            # no mostramos estados "Confiable" ni similares.
+            if demanda_esperada <= 1 or calidad == "Sin datos suficientes":
+                valoracion = "Sin datos suficientes"
+            elif calidad == "No confiable":
+                valoracion = "No confiable"
+            else:
+                valoracion = calidad
 
         productos.append({
             "id": inv_id,
@@ -3328,12 +3350,13 @@ def inventarios_page():
             "precio_total": costo * stock,
             "fecha_creacion": r[6].strftime("%Y-%m-%d %H:%M") if r[6] else "",
             "tiene_fecha_vencimiento": bool(r[7]),
-
-            # Campos para la vista
             "proyeccion_ia": proyeccion_ia,
             "valoracion": valoracion,
-            "error_modelo": error
+            "error_modelo": error_modelo,
+            "demanda_esperada": demanda_esperada
         })
+
+
 
     # ============================================================
     # 📄 RENDERIZAR PLANTILLA
@@ -3348,10 +3371,8 @@ def inventarios_page():
         total_stock=total_stock,
         search=search,
         categorias=categorias,
-        usar_proyeccion=usar_proyeccion
+        usar_proyeccion=usar_proyeccion_real
     )
-
-
 
 # ---------------- INACTIVAR PRODUCTO ----------------
 @app.route("/inventarios/inactivar/<int:inventario_id>", methods=["POST"])
@@ -3887,10 +3908,3 @@ def dashboard_facturas_proveedores():
 # --------------- run ----------------
 if __name__ == "__main__":
    app.run(host="0.0.0.0", port=5000, debug=True)
-
-def open_browser():
-    webbrowser.open_new("http://127.0.0.1:5000")
-
-if __name__ == "__main__":
-    Timer(1, open_browser).start()
-    app.run(host="0.0.0.0", port=5000, debug=True)

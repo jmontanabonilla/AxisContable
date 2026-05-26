@@ -41,7 +41,6 @@
                     </div>
                     <h6 class="text-muted">Total Productos</h6>
                     <h3 class="fw-bold">{{ kpis.total_productos }}</h3>
-                    <small class="text-muted">{{ kpis.total_activos }} activos</small>
                 </div>
             </div>
         </div>
@@ -54,22 +53,13 @@
                         <i class="bi bi-cash-stack"></i>
                     </div>
                     <h6 class="text-muted">Valor Inventario</h6>
-                    <h3 class="fw-bold">${{ "%.2f"|format(kpis.valor_inventario) }}</h3>
-                </div>
-            </div>
-        </div>
+                    <h3 class="fw-bold">
+                        ${{ "{:,.0f}".format(kpis.valor_inventario|default(0)).replace(",", ".") }}
+                    </h3>
 
-        <!-- Margen Potencial -->
-        <div class="col-md-3">
-            <div class="card shadow-sm kpi-card">
-                <div class="card-body text-center">
-                    <div class="kpi-icon text-info mb-2">
-                        <i class="bi bi-graph-up-arrow"></i>
-                    </div>
-                    <h6 class="text-muted">Margen Potencial</h6>
-                    <h3 class="fw-bold text-info">${{ "%.2f"|format(kpis.margen_potencial) }}</h3>
-                    <small class="text-muted">
-                        Margen estimado ({{ (kpis.margen_potencial_factor * 100)|round(0) }}%)
+                    <small class="text-info fw-bold d-block mt-1">
+                        Margen potencial:
+                        ${{ "{:,.0f}".format(kpis.margen_potencial|default(0)).replace(",", ".") }}
                     </small>
                 </div>
             </div>
@@ -87,6 +77,20 @@
                     <small class="text-muted">
                         Alerta a {{ kpis.dias_alerta_venc }} días del vencimiento
                     </small>
+                </div>
+            </div>
+        </div>
+
+        <!-- Alertas Stock Bajo -->
+        <div class="col-md-3">
+            <div class="card shadow-sm kpi-card">
+                <div class="card-body text-center">
+                    <div class="kpi-icon text-danger mb-2">
+                        <i class="bi bi-exclamation-triangle"></i>
+                    </div>
+                    <h6 class="text-muted">Alertas Stock Bajo</h6>
+                    <h3 class="fw-bold text-danger">{{ kpis.alertas_stock_bajo }}</h3>
+                    <small class="text-muted">Productos con stock crítico o agotado</small>
                 </div>
             </div>
         </div>
@@ -204,33 +208,37 @@
 <script>
 document.addEventListener("DOMContentLoaded", function() {
 
-    // ============================
-    // 📦 STOCK POR CATEGORÍA (TOP 10)
-    // ============================
-    const categorias = {{ kpis.stock_por_categoria | tojson }};
+    // Recibe LISTAS ordenadas desde Python
+    const categorias = {{ (kpis.stock_por_categoria or []) | tojson }};
+    const vencMes = {{ (kpis.vencimientos_por_mes or {}) | tojson }};
+    const rotacion = {{ (kpis.top_rotacion or []) | tojson }};
+    const diasStock = {{ (kpis.dias_stock or []) | tojson }};
+
+    // ================================
+    // 📊 STOCK POR CATEGORÍA (TOP 10)
+    // ================================
     new Chart(document.getElementById("chartCategorias"), {
         type: "bar",
         data: {
-            labels: Object.keys(categorias),
+            labels: categorias.map(r => r.Categoria),
             datasets: [{
                 label: "Unidades",
-                data: Object.values(categorias),
-                backgroundColor: "rgba(13, 110, 253, 0.7)",
+                data: categorias.map(r => r.Stock),
+                backgroundColor: "rgba(13,110,253,0.7)",
                 borderColor: "#0d6efd",
                 borderWidth: 2,
                 borderRadius: 6
             }]
         },
-        options: {
+        options: { 
             plugins: { legend: { display: false }},
             scales: { y: { beginAtZero: true }}
         }
     });
 
-    // ============================
-    // ⏳ VENCIMIENTOS POR MES
-    // ============================
-    const vencMes = {{ kpis.vencimientos_por_mes | tojson }};
+    // ================================
+    // 📈 VENCIMIENTOS POR MES
+    // ================================
     new Chart(document.getElementById("chartVencimientosMes"), {
         type: "line",
         data: {
@@ -242,21 +250,18 @@ document.addEventListener("DOMContentLoaded", function() {
                 backgroundColor: "rgba(255,193,7,0.25)",
                 borderWidth: 2,
                 tension: 0.3,
-                fill: true,
-                pointRadius: 5,
-                pointBackgroundColor: "#ffc107"
+                fill: true
             }]
         },
-        options: {
+        options: { 
             plugins: { legend: { display: false }},
             scales: { y: { beginAtZero: true }}
         }
     });
 
-    // ============================
-    // 🔁 ROTACIÓN DE PRODUCTOS (TOP 10)
-    // ============================
-    const rotacion = {{ kpis.top_rotacion | tojson }};
+    // ================================
+    // 🔄 ROTACIÓN DE PRODUCTOS
+    // ================================
     new Chart(document.getElementById("chartRotacion"), {
         type: "bar",
         data: {
@@ -270,17 +275,16 @@ document.addEventListener("DOMContentLoaded", function() {
                 borderRadius: 6
             }]
         },
-        options: {
+        options: { 
             indexAxis: "y",
             plugins: { legend: { display: false }},
             scales: { x: { beginAtZero: true }}
         }
     });
 
-    // ============================
-    // 📅 DÍAS ESTIMADOS DE STOCK
-    // ============================
-    const diasStock = {{ kpis.dias_stock | tojson }};
+    // ================================
+    // 📦 DÍAS DE STOCK
+    // ================================
     new Chart(document.getElementById("chartDiasStock"), {
         type: "bar",
         data: {
@@ -294,7 +298,7 @@ document.addEventListener("DOMContentLoaded", function() {
                 borderRadius: 6
             }]
         },
-        options: {
+        options: { 
             indexAxis: "y",
             plugins: { legend: { display: false }},
             scales: { x: { beginAtZero: true }}
@@ -303,5 +307,6 @@ document.addEventListener("DOMContentLoaded", function() {
 
 });
 </script>
+
 
 {% endblock %}
