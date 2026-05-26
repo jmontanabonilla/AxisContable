@@ -17,6 +17,12 @@ import functools
 import pdfkit
 import locale
 import os
+import locale
+import os
+import webbrowser
+from threading import Timer
+import webbrowser
+from threading import Timer
 
 
 # ---------------- CONFIG ----------------
@@ -3881,3 +3887,10 @@ def dashboard_facturas_proveedores():
 # --------------- run ----------------
 if __name__ == "__main__":
    app.run(host="0.0.0.0", port=5000, debug=True)
+
+def open_browser():
+    webbrowser.open_new("http://127.0.0.1:5000")
+
+if __name__ == "__main__":
+    Timer(1, open_browser).start()
+    app.run(host="0.0.0.0", port=5000, debug=True)
