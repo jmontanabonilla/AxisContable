@@ -3164,7 +3164,7 @@ def generar_pdf_factura_electronica(venta_id):
 
 
 # ============================================================
-# ROUTE: INVENTARIOS
+# ROUTES: INVENTARIOS
 # ============================================================
 
 @app.route("/inventarios", methods=["GET", "POST"])
@@ -3408,7 +3408,6 @@ def inactivar_inventario(inventario_id):
     flash("Producto inactivado correctamente.", "success")
     return redirect(url_for("inventarios_page"))
 
-
 # ---------------- EDITAR PRODUCTO ----------------
 @app.route("/inventarios/editar/<int:inventario_id>", methods=["GET", "POST"])
 @require_permission("INVENTARIOS", "editar")
@@ -3477,10 +3476,15 @@ def editar_inventario(inventario_id):
         costo = (request.form.get("costo_edit") or "").strip()
         categoria_id = request.form.get("categoria_edit")
 
+        # Nuevo campo: checkbox de vencimiento
+        tiene_fecha_venc = 1 if request.form.get("tiene_fecha_venc_edit") == "on" else 0
+
+        # Validación de campos obligatorios
         if not nombre or not sku or not codigo_barras or not costo or not categoria_id:
             flash("Todos los campos del producto son obligatorios.", "danger")
             return redirect(url_for("editar_inventario", inventario_id=inventario_id, page=page, search=search))
 
+        # Validar SKU duplicado
         existe_sku = query_one("""
             SELECT Id FROM Inventarios
             WHERE SKU = ? AND Id <> ? AND Estado = 1
@@ -3489,6 +3493,7 @@ def editar_inventario(inventario_id):
             flash("El SKU ya existe en otro producto.", "warning")
             return redirect(url_for("editar_inventario", inventario_id=inventario_id, page=page, search=search))
 
+        # Validar código de barras duplicado
         existe_cb = query_one("""
             SELECT Id FROM Inventarios
             WHERE CodigoBarras = ? AND Id <> ? AND Estado = 1
@@ -3497,15 +3502,17 @@ def editar_inventario(inventario_id):
             flash("El código de barras ya existe en otro producto.", "warning")
             return redirect(url_for("editar_inventario", inventario_id=inventario_id, page=page, search=search))
 
+        # Actualizar producto
         exec_sql("""
             UPDATE Inventarios
             SET NombreProducto = ?, SKU = ?, CodigoBarras = ?, Costo = ?, 
-                CategoriaInventarioId = ?, FechaCreacion = GETDATE()
+                CategoriaInventarioId = ?, TieneFechaVencimiento = ?, FechaCreacion = GETDATE()
             WHERE Id = ?
-        """, (nombre, sku, codigo_barras, costo, categoria_id, inventario_id))
+        """, (nombre, sku, codigo_barras, costo, categoria_id, tiene_fecha_venc, inventario_id))
 
         flash("Producto actualizado correctamente.", "success")
-        return redirect(url_for("inventarios_page", page=page, search=search))
+        # 🔁 Mantenerse en la vista de edición del mismo producto
+        return redirect(url_for("editar_inventario", inventario_id=inventario_id, page=page, search=search))
 
     # ---------------- LOTES ----------------
     lotes = query_all("""
