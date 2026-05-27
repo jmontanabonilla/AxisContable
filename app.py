@@ -2256,6 +2256,8 @@ def inactivar_factura(factura_id):
 @app.route("/proveedores/editar/<int:factura_id>", methods=["POST"])
 @require_permission("PROVEEDORES", "editar")
 def editar_factura(factura_id):
+
+    # Obtener parámetros del formulario
     proveedor_id = request.form.get("proveedor_id_edit")
     numero_factura = request.form.get("numero_factura_edit")
     fecha_factura = request.form.get("fecha_factura_edit")
@@ -2264,13 +2266,24 @@ def editar_factura(factura_id):
     total = request.form.get("total_edit")
     descripcion = request.form.get("descripcion_edit")
 
-    # Validar campos obligatorios
+    # Parámetros de navegación
+    page = request.args.get("page", 1)
+    search = request.args.get("search", "")
+    periodo = request.args.get("periodo", datetime.today().strftime("%Y-%m"))
+
+    # Helper para redirigir manteniendo filtros
+    def redirect_back():
+        return redirect(url_for("proveedores_page",
+                                page=page,
+                                search=search,
+                                periodo=periodo))
+
+    # ---------------- VALIDACIONES ----------------
+
+    # Campos obligatorios
     if not proveedor_id or not numero_factura or not fecha_factura or not fecha_vencimiento:
         flash("Proveedor, número de factura, fecha de emisión y vencimiento son obligatorios.", "danger")
-        return redirect(url_for("proveedores_page",
-                                page=request.args.get("page", 1),
-                                search=request.args.get("search", ""),
-                                periodo=request.args.get("periodo", datetime.today().strftime("%Y-%m"))))
+        return redirect_back()
 
     # Validar fechas
     try:
@@ -2278,38 +2291,51 @@ def editar_factura(factura_id):
         venc_dt = datetime.strptime(fecha_vencimiento, "%Y-%m-%d")
     except:
         flash("Formato de fecha inválido.", "danger")
-        return redirect(url_for("proveedores_page",
-                                page=request.args.get("page", 1),
-                                search=request.args.get("search", ""),
-                                periodo=request.args.get("periodo", datetime.today().strftime("%Y-%m"))))
+        return redirect_back()
 
     if venc_dt <= fecha_dt:
         flash("La fecha de vencimiento debe ser posterior a la fecha de emisión.", "danger")
-        return redirect(url_for("proveedores_page",
-                                page=request.args.get("page", 1),
-                                search=request.args.get("search", ""),
-                                periodo=request.args.get("periodo", datetime.today().strftime("%Y-%m"))))
+        return redirect_back()
 
     # Normalizar total
-    total = float((total or "0").replace(",", "."))
+    try:
+        total = float((total or "0").replace(",", "."))
+    except:
+        flash("El total debe ser un número válido.", "danger")
+        return redirect_back()
 
-    # Validar duplicado de número de factura
+    if total <= 0:
+        flash("El total debe ser mayor a cero.", "warning")
+        return redirect_back()
+
+    # ---------------- VALIDAR ESTADO ACTUAL EN BD ----------------
+    row_estado = query_one("""
+        SELECT EstadoFactura FROM FacturasProveedores
+        WHERE Id = ? AND Estado = 1
+    """, (factura_id,))
+
+    estado_actual = row_estado[0] if row_estado else None
+
+    # Si ya está pagada → NO permitir cambiar estado
+    if estado_actual == "Pagada" and estado_factura != "Pagada":
+        flash("No se puede cambiar el estado de una factura que ya está pagada.", "warning")
+        return redirect_back()
+
+    # ---------------- VALIDAR DUPLICADO ----------------
     existe = query_one("""
         SELECT Id FROM FacturasProveedores
-        WHERE NumeroFactura = ? AND Estado = 1 AND Id <> ?
-    """, (numero_factura, factura_id))
-    if existe:
-        flash("Ya existe otra factura activa con ese número.", "danger")
-        return redirect(url_for("proveedores_page",
-                                page=request.args.get("page", 1),
-                                search=request.args.get("search", ""),
-                                periodo=request.args.get("periodo", datetime.today().strftime("%Y-%m"))))
+        WHERE ProveedorId = ? AND NumeroFactura = ? AND Estado = 1 AND Id <> ?
+    """, (proveedor_id, numero_factura, factura_id))
 
-    # Validar estado (en edición sí se permite Anulada)
+    if existe:
+        flash("Ya existe otra factura activa con ese número para este proveedor.", "danger")
+        return redirect_back()
+
+    # Validar estado permitido
     if estado_factura not in ["Pendiente", "Pagada", "Anulada"]:
         estado_factura = "Pendiente"
 
-    # Actualizar factura
+    # ---------------- ACTUALIZAR FACTURA ----------------
     exec_sql("""
         UPDATE FacturasProveedores
         SET ProveedorId = ?, NumeroFactura = ?, FechaFactura = ?, FechaVencimiento = ?,
@@ -2327,10 +2353,7 @@ def editar_factura(factura_id):
     ))
 
     flash("Factura actualizada correctamente.", "success")
-    return redirect(url_for("proveedores_page",
-                            page=request.args.get("page", 1),
-                            search=request.args.get("search", ""),
-                            periodo=request.args.get("periodo", datetime.today().strftime("%Y-%m"))))
+    return redirect_back()
 
 
 

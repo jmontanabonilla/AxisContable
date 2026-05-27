@@ -56,7 +56,7 @@
         </div>
 
         <div class="col-md-3">
-          <label class="form-label">Fecha factura</label>
+          <label class="form-label">Fecha Emisión</label>
           <input type="date" name="fecha_factura" class="form-control"
                  {% if permitir_anteriores == 0 %} min="{{ inicio_mes_str }}" {% endif %}
                  max="{{ fin_mes_str }}" required>
@@ -108,7 +108,7 @@
         <tr>
           <th>Proveedor</th>
           <th>Número Factura</th>
-          <th>Fecha Factura</th>
+          <th>Fecha Emisión</th>
           <th>Fecha Vencimiento</th>
           <th>Estado</th>
           <th>Total</th>
@@ -165,9 +165,11 @@
 
                 <div class="modal-body">
 
+                  <!-- PROVEEDOR -->
                   <div class="mb-3">
                     <label class="form-label">Proveedor</label>
-                    <select name="proveedor_id_edit" class="form-select" required>
+                    <select name="proveedor_id_edit" class="form-select"
+                            {% if f.EstadoFactura == 'Pagada' %} disabled {% endif %} required>
                       {% for p in proveedores %}
                         <option value="{{ p.Id }}" {% if p.Id == f.ProveedorId %}selected{% endif %}>
                           {{ p.RazonSocial }} ({{ p.NumeroIdentificacion }})
@@ -176,53 +178,76 @@
                     </select>
                   </div>
 
+                  <!-- NÚMERO FACTURA -->
                   <div class="mb-3">
                     <label class="form-label">Número factura</label>
-                    <input type="text" name="numero_factura_edit" class="form-control" value="{{ f.NumeroFactura }}" required>
+                    <input type="text" name="numero_factura_edit" class="form-control"
+                          value="{{ f.NumeroFactura }}"
+                          {% if f.EstadoFactura == 'Pagada' %} disabled {% endif %}
+                          required>
                   </div>
 
+                  <!-- FECHA FACTURA -->
                   <div class="mb-3">
                     <label class="form-label">Fecha factura</label>
                     <input type="date" name="fecha_factura_edit" class="form-control"
-                           value="{{ f.FechaFactura }}" required>
+                          value="{{ f.FechaFactura }}"
+                          {% if f.EstadoFactura == 'Pagada' %} disabled {% endif %}
+                          required>
                   </div>
 
+                  <!-- FECHA VENCIMIENTO -->
                   <div class="mb-3">
                     <label class="form-label">Fecha vencimiento</label>
                     <input type="date" name="fecha_vencimiento_edit" class="form-control"
-                           value="{{ f.FechaVencimiento }}" required>
+                          value="{{ f.FechaVencimiento }}"
+                          {% if f.EstadoFactura == 'Pagada' %} disabled {% endif %}
+                          required>
                   </div>
 
+                  <!-- ESTADO FACTURA -->
                   <div class="mb-3">
                     <label class="form-label">Estado factura</label>
-                    <select name="estado_factura_edit" class="form-select">
+                    <select name="estado_factura_edit" class="form-select"
+                            {% if f.EstadoFactura == 'Pagada' %} disabled {% endif %}>
                       <option value="Pendiente" {% if f.EstadoFactura=='Pendiente' %}selected{% endif %}>Pendiente</option>
                       <option value="Pagada" {% if f.EstadoFactura=='Pagada' %}selected{% endif %}>Pagada</option>
                       <option value="Anulada" {% if f.EstadoFactura=='Anulada' %}selected{% endif %}>Anulada</option>
                     </select>
+
+                    {% if f.EstadoFactura == 'Pagada' %}
+                      <small class="text-muted">Factura pagada — no se puede modificar ningún dato.</small>
+                    {% endif %}
                   </div>
 
+                  <!-- TOTAL -->
                   <div class="mb-3">
                     <label class="form-label">Total</label>
-                    <input type="number" step="0.01" min="0" name="total_edit" class="form-control" value="{{ f.Total }}" required>
+                    <input type="number" step="0.01" min="0" name="total_edit" class="form-control"
+                          value="{{ f.Total }}"
+                          {% if f.EstadoFactura == 'Pagada' %} disabled {% endif %}
+                          required>
                   </div>
 
+                  <!-- DESCRIPCIÓN -->
                   <div class="mb-3">
                     <label class="form-label">Descripción</label>
-                    <textarea name="descripcion_edit" class="form-control" rows="2">{{ f.Descripcion }}</textarea>
+                    <textarea name="descripcion_edit" class="form-control" rows="2"
+                              {% if f.EstadoFactura == 'Pagada' %} disabled {% endif %}>{{ f.Descripcion }}</textarea>
                   </div>
 
                 </div>
 
                 <div class="modal-footer">
-                  <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                  <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
 
-                  {% if f.EstadoFactura != 'Anulada' %}
-                  <button type="submit" class="btn btn-primary">Guardar</button>
+                  {% if f.EstadoFactura != 'Pagada' and f.EstadoFactura != 'Anulada' %}
+                    <button type="submit" class="btn btn-primary">Guardar</button>
                   {% else %}
-                  <button type="button" class="btn btn-secondary" disabled>Factura anulada</button>
+                    <button type="button" class="btn btn-secondary" disabled>
+                      {% if f.EstadoFactura == 'Pagada' %}Factura pagada{% else %}Factura anulada{% endif %}
+                    </button>
                   {% endif %}
-
                 </div>
 
               </form>
@@ -231,6 +256,8 @@
           </div>
         </div>
         <!-- Fin modal -->
+
+
 
         {% endfor %}
       </tbody>
