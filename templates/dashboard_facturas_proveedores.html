@@ -1,22 +1,253 @@
 {% extends "base.html" %}
-
 {% block content %}
+
+<style>
+    .kpi-card {
+        border: none;
+        border-radius: 14px;
+        transition: 0.25s ease-in-out;
+        height: 100%;
+    }
+    .kpi-card:hover {
+        transform: translateY(-6px);
+        box-shadow: 0 8px 24px rgba(0,0,0,0.15);
+    }
+    .kpi-icon {
+        font-size: 36px;
+        opacity: 0.85;
+    }
+    .chart-card {
+        border-radius: 14px;
+        border: none;
+        height: 100%;
+    }
+    .table-responsive {
+        border-radius: 14px;
+        overflow-x: auto;
+    }
+
+    @media (max-width: 992px) {
+        .kpi-card .card-body {
+            text-align: center;
+        }
+        .chart-card {
+            margin-bottom: 20px;
+        }
+    }
+
+    @media (max-width: 768px) {
+        h2.fw-bold {
+            font-size: 1.4rem;
+        }
+        .kpi-icon {
+            font-size: 28px;
+        }
+        .card-body h3 {
+            font-size: 1.3rem;
+        }
+    }
+
+    @media (max-width: 576px) {
+        .row.g-4 > [class*="col-"] {
+            flex: 0 0 100%;
+            max-width: 100%;
+        }
+        .chart-card canvas {
+            height: 220px !important;
+        }
+    }
+</style>
 
 <div class="container-fluid">
 
-    <!-- TÍTULO DEL DASHBOARD -->
-    <div class="d-flex justify-content-between align-items-center mb-4">
-        <h2 class="fw-bold">Dashboard de Facturas Proveedores</h2>
+    <!-- TÍTULO -->
+    <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap">
+        <h2 class="fw-bold mb-2">📑 Dashboard Facturas Proveedores</h2>
     </div>
 
-    <!-- CONTENIDO VACÍO (LISTO PARA TUS GRÁFICOS) -->
-    <div class="card shadow-sm">
-        <div class="card-body text-center py-5">
-            <h5 class="text-muted">Aquí irá tu dashboard de facturas</h5>
-            <p class="text-secondary">Puedes agregar gráficos, KPIs, tablas o cualquier visualización.</p>
+    <!-- KPIs -->
+    <div class="row g-4 mb-4">
+
+        <div class="col-sm-6 col-md-3">
+            <div class="card shadow-sm kpi-card">
+                <div class="card-body text-center">
+                    <div class="kpi-icon text-primary mb-2">
+                        <i class="bi bi-receipt"></i>
+                    </div>
+                    <h6 class="text-muted">Total Facturas</h6>
+                    <h3 class="fw-bold">{{ kpis.total_facturas }}</h3>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-sm-6 col-md-3">
+            <div class="card shadow-sm kpi-card">
+                <div class="card-body text-center">
+                    <div class="kpi-icon text-danger mb-2">
+                        <i class="bi bi-cash"></i>
+                    </div>
+                    <h6 class="text-muted">Cuentas por Pagar</h6>
+                    <h3 class="fw-bold text-danger">
+                        ${{ "{:,.0f}".format(kpis.total_cuentas_por_pagar).replace(",", ".") }}
+                    </h3>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-sm-6 col-md-3">
+            <div class="card shadow-sm kpi-card">
+                <div class="card-body text-center">
+                    <div class="kpi-icon text-success mb-2">
+                        <i class="bi bi-graph-up-arrow"></i>
+                    </div>
+                    <h6 class="text-muted">Flujo Caja Proyectado</h6>
+                    <h3 class="fw-bold text-success">
+                        ${{ "{:,.0f}".format(kpis.flujo_caja_proyectado).replace(",", ".") }}
+                    </h3>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-sm-6 col-md-3">
+            <div class="card shadow-sm kpi-card">
+                <div class="card-body text-center">
+                    <div class="kpi-icon text-warning mb-2">
+                        <i class="bi bi-exclamation-triangle"></i>
+                    </div>
+                    <h6 class="text-muted">Alertas de Vencimiento</h6>
+                    <h3 class="fw-bold text-warning">{{ kpis.alertas_vencimiento }}</h3>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- GRÁFICOS -->
+    <div class="row g-4 mb-4">
+
+        <div class="col-lg-6 col-md-12">
+            <div class="card shadow-sm chart-card">
+                <div class="card-header fw-bold bg-light">
+                    📌 Estados de Facturas
+                </div>
+                <div class="card-body">
+                    <canvas id="chartEstados" height="180"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-6 col-md-12">
+            <div class="card shadow-sm chart-card">
+                <div class="card-header fw-bold bg-light">
+                    💰 Monto por Proveedor (Top 10)
+                </div>
+                <div class="card-body">
+                    <canvas id="chartProveedores" height="180"></canvas>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- TABLA -->
+    <div class="card shadow-sm chart-card mb-5">
+        <div class="card-header fw-bold bg-light">
+            📄 Listado de Facturas
+        </div>
+
+        <div class="card-body table-responsive">
+
+            <table class="table table-hover align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th>Proveedor</th>
+                        <th>Estado</th>
+                        <th>Monto</th>
+                        <th>Fecha Emisión</th>
+                        <th>Fecha Vencimiento</th>
+                        <th>Días al Vencimiento</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for f in kpis.lista_facturas %}
+                    <tr>
+                        <td>{{ f.Proveedor }}</td>
+                        <td>
+                            {% if f.Estado == "Pendiente" %}
+                                <span class="badge bg-danger">Pendiente</span>
+                            {% elif f.Estado == "Pagada" %}
+                                <span class="badge bg-success">Pagada</span>
+                            {% else %}
+                                <span class="badge bg-secondary">{{ f.Estado }}</span>
+                            {% endif %}
+                        </td>
+                        <td>${{ "{:,.0f}".format(f.MontoTotal).replace(",", ".") }}</td>
+                        <td>{{ f.FechaEmision }}</td>
+                        <td>{{ f.FechaVencimiento }}</td>
+                        <td>
+                            {% if f.EsVencida %}
+                                <span class="text-danger fw-bold">{{ f.DiasAlVencimiento }}</span>
+                            {% elif f.EsProximaVencer %}
+                                <span class="text-warning fw-bold">{{ f.DiasAlVencimiento }}</span>
+                            {% else %}
+                                <span class="text-success">{{ f.DiasAlVencimiento }}</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+
         </div>
     </div>
 
 </div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+    const estados = {{ (kpis.conteo_estados or {}) | tojson }};
+    const proveedores = {{ (kpis.monto_por_proveedor or []) | tojson }};
+
+    // Pie: estados
+    new Chart(document.getElementById("chartEstados"), {
+        type: "pie",
+        data: {
+            labels: Object.keys(estados),
+            datasets: [{
+                data: Object.values(estados),
+                backgroundColor: ["#198754", "#dc3545", "#6c757d"]
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false
+        }
+    });
+
+    // Barras: monto por proveedor
+    new Chart(document.getElementById("chartProveedores"), {
+        type: "bar",
+        data: {
+            labels: proveedores.map(r => r.Proveedor),
+            datasets: [{
+                label: "Monto",
+                data: proveedores.map(r => r.Monto),
+                backgroundColor: "rgba(13,110,253,0.7)",
+                borderColor: "#0d6efd",
+                borderWidth: 2,
+                borderRadius: 6
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { display: false }},
+            scales: { y: { beginAtZero: true } }
+        }
+    });
+});
+</script>
 
 {% endblock %}

@@ -11,7 +11,6 @@
       <!-- 🔥 SWITCH PROYECCIÓN IA -->
       <form method="POST" id="formProyeccionIA" class="me-3">
         <input type="hidden" name="valor" id="valorProyeccion">
-
         <div class="form-check form-switch">
           <input class="form-check-input"
                  type="checkbox"
@@ -25,7 +24,8 @@
 
       <!-- Buscador -->
       <form class="d-flex" method="get" action="{{ url_for('inventarios_page') }}">
-        <input class="form-control me-2" type="text" name="search" value="{{ search }}" placeholder="Buscar por nombre, SKU o código de barras">
+        <input class="form-control me-2" type="text" name="search" value="{{ search }}"
+               placeholder="Buscar por nombre, SKU o código de barras">
         <button class="btn btn-outline-secondary" type="submit">Buscar</button>
       </form>
 
@@ -120,18 +120,21 @@
           <td>{{ p.sku }}</td>
           <td>{{ p.nombre }}</td>
 
-          <!-- STOCK con lógica corregida -->
+          <!-- STOCK (solo este bloque modificado) -->
           {% if usar_proyeccion == 1 %}
-            {% if p.valoracion == "Sin datos suficientes" %}
+            {% if p.stock_optimo == 0 %}
               <td class="fw-normal text-dark">{{ p.stock }}</td>
+
             {% elif p.stock < p.stock_optimo %}
               <td class="fw-bold text-danger">
                 <i class="bi bi-arrow-down-circle-fill me-1"></i>{{ p.stock }}
               </td>
+
             {% elif p.stock > p.stock_optimo %}
               <td class="fw-bold text-warning">
                 <i class="bi bi-exclamation-circle-fill me-1"></i>{{ p.stock }}
               </td>
+
             {% else %}
               <td class="fw-bold text-success">
                 <i class="bi bi-check-circle-fill me-1"></i>{{ p.stock }}
@@ -141,58 +144,65 @@
             <td>{{ p.stock }}</td>
           {% endif %}
 
-          <!-- PROYECCIÓN IA -->
-          <td>
-            {% if usar_proyeccion == 0 %}
-              <span class="badge bg-dark">
-                <i class="bi bi-power me-1"></i>OFF
-              </span>
-            {% else %}
-              {% if p.valoracion == "Sin datos suficientes" %}
+            <!-- STOCK ÓPTIMO (alerta restaurada y OFF funcional) -->
+            <td>
+              {% if p.proyeccion_ia == "OFF" or usar_proyeccion == 0 %}
+                <span class="badge bg-dark">
+                  <i class="bi bi-power me-1"></i>OFF
+                </span>
+
+              {% elif p.stock_optimo == 0 and p.valoracion == "Sin datos suficientes" %}
+                <span class="badge bg-secondary" data-bs-toggle="tooltip"
+                      title="No hay suficientes datos para proyectar.">
+                  <i class="bi bi-info-circle me-1"></i>Sin datos suficientes
+                </span>
+
+              {% elif p.stock_optimo == 0 and p.valoracion != "Sin datos suficientes" %}
+                <span class="badge bg-warning text-dark" data-bs-toggle="tooltip"
+                      title="El modelo detectó tendencia a cero unidades.">
+                  <i class="bi bi-exclamation-triangle me-1"></i>Sin demanda proyectada
+                </span>
+
+              {% else %}
+                <span class="badge bg-primary" data-bs-toggle="tooltip"
+                      title="Proyección IA calculada correctamente.">
+                  <i class="bi bi-graph-up-arrow me-1"></i>{{ p.stock_optimo }} unidades
+                </span>
+              {% endif %}
+            </td>
+
+
+
+
+            <!-- VALORACIÓN (independiente del stock) -->
+            <td>
+              {% if p.valoracion == "OFF" or usar_proyeccion == 0 %}
+                <span class="badge bg-dark">
+                  <i class="bi bi-power me-1"></i>OFF
+                </span>
+              {% elif p.valoracion == "Confiable" %}
+                <span class="badge bg-success">
+                  <i class="bi bi-check-circle me-1"></i>Confiable
+                </span>
+              {% elif p.valoracion == "Precaución" %}
+                <span class="badge bg-warning text-dark">
+                  <i class="bi bi-exclamation-triangle me-1"></i>Precaución
+                </span>
+              {% elif p.valoracion == "Inestable" %}
+                <span class="badge bg-info text-dark">
+                  <i class="bi bi-slash-circle me-1"></i>Inestable
+                </span>
+              {% elif p.valoracion == "No confiable" %}
+                <span class="badge bg-danger">
+                  <i class="bi bi-x-circle me-1"></i>No confiable
+                </span>
+              {% else %}
                 <span class="badge bg-secondary">
                   <i class="bi bi-info-circle me-1"></i>Sin datos suficientes
                 </span>
-              {% else %}
-                <span class="badge bg-primary">
-                  <i class="bi bi-graph-up-arrow me-1"></i>{{ p.proyeccion_ia }}
-                </span>
               {% endif %}
-            {% endif %}
-          </td>
+            </td>
 
-          <!-- VALORACIÓN DEL MODELO -->
-          <td>
-            {% if usar_proyeccion == 0 %}
-              <span class="badge bg-dark">
-                <i class="bi bi-power me-1"></i>OFF
-              </span>
-
-            {% elif p.valoracion == "Confiable" %}
-              <span class="badge bg-success">
-                <i class="bi bi-check-circle me-1"></i>Confiable
-              </span>
-
-            {% elif p.valoracion == "Usar con precaución" %}
-              <span class="badge bg-warning text-dark">
-                <i class="bi bi-exclamation-triangle me-1"></i>Usar con precaución
-              </span>
-
-            {% elif p.valoracion == "Revisión recomendada" %}
-              <span class="badge bg-info text-dark">
-                <i class="bi bi-search me-1"></i>Revisión recomendada
-              </span>
-
-            {% elif p.valoracion == "No confiable" %}
-              <span class="badge bg-danger">
-                <i class="bi bi-x-circle me-1"></i>No confiable
-              </span>
-
-            {% else %}
-              <span class="badge bg-secondary">
-                <i class="bi bi-info-circle me-1"></i>Sin datos suficientes
-              </span>
-            {% endif %}
-          </td>
 
           <td>${{ "%.2f"|format(p.costo) }}</td>
           <td>${{ "%.2f"|format(p.precio_total) }}</td>
@@ -205,7 +215,9 @@
                 Editar
               </a>
 
-              <form method="POST" action="{{ url_for('inactivar_inventario', inventario_id=p.id, page=page, search=search) }}" class="d-inline">
+              <form method="POST"
+                    action="{{ url_for('inactivar_inventario', inventario_id=p.id, page=page, search=search) }}"
+                    class="d-inline">
                 <button type="submit" class="btn btn-sm btn-outline-danger">Inactivar</button>
               </form>
             </div>
@@ -216,7 +228,6 @@
       </tbody>
     </table>
   </div>
-
   {% else %}
   <div class="alert alert-info text-center">
     No hay productos activos registrados.
@@ -227,7 +238,8 @@
   <nav aria-label="Paginación">
     <ul class="pagination justify-content-center">
       <li class="page-item {% if page <= 1 %}disabled{% endif %}">
-        <a class="page-link" href="{{ url_for('inventarios_page', page=page-1, search=search) }}">Anterior</a>
+        <a class="page-link"
+           href="{{ url_for('inventarios_page', page=page-1, search=search) }}">Anterior</a>
       </li>
 
       <li class="page-item disabled">
@@ -235,7 +247,8 @@
       </li>
 
       <li class="page-item {% if page >= total_pages %}disabled{% endif %}">
-        <a class="page-link" href="{{ url_for('inventarios_page', page=page+1, search=search) }}">Siguiente</a>
+        <a class="page-link"
+           href="{{ url_for('inventarios_page', page=page+1, search=search) }}">Siguiente</a>
       </li>
     </ul>
   </nav>

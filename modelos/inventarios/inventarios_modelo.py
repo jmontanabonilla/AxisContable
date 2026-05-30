@@ -36,29 +36,30 @@ def calcular_rmse(y_real, y_pred):
 def clasificar_calidad(error, cantidad_datos, demanda_futura):
     """
     Clasifica la calidad del modelo de forma comprensible para el usuario.
-    - Si hay menos de 2 datos → Sin datos suficientes
-    - Si error == 0 y demanda_futura <= 1 → Sin datos suficientes
-    - Si error == 0 y demanda_futura > 1 → Confiable
-    - Si error < 0.5 → Confiable
-    - Si error < 1.0 → Usar con precaución
-    - Si error < 2.0 → Revisión recomendada
-    - Si error >= 2.0 → No confiable
+    Estados: Sin datos suficientes, Confiable, Precaución, Inestable, No confiable.
     """
+
+    # 1. Sin datos suficientes
     if cantidad_datos < 2:
         return "Sin datos suficientes"
 
-    if error == 0 and demanda_futura <= 1:
+    # 2. Error cero nunca es confiable
+    if error == 0:
         return "Sin datos suficientes"
 
-    if error == 0 and demanda_futura > 1:
+    # 3. Confiable: error entre 0.1 y 0.5
+    if 0.1 <= error <= 0.5:
         return "Confiable"
 
-    if error < 0.5:
-        return "Confiable"
-    if error < 1.0:
-        return "Usar con precaución"
-    if error < 2.0:
-        return "Revisión recomendada"
+    # 4. Precaución: error entre 0.5 y 1.0
+    if error <= 1.0:
+        return "Precaución"
+
+    # 5. Inestable: error entre 1.0 y 2.0
+    if error <= 2.0:
+        return "Inestable"
+
+    # 6. No confiable: error mayor a 2.0
     return "No confiable"
 
 
@@ -185,6 +186,8 @@ def generar_resultados_inventario():
             error_modelo = 0
             calidad = "Sin datos suficientes"
             metodo = "Regla"
+
+            # SIEMPRE mostrar stock óptimo
             stock_optimo = max(0, round(grupo["StockActual"].iloc[0] * factor_seguridad))
 
         else:
@@ -204,14 +207,10 @@ def generar_resultados_inventario():
             calidad = clasificar_calidad(error_modelo, len(y_real), demanda_futura)
 
             # ============================================================
-            # NUEVA LÓGICA DE STOCK ÓPTIMO
+            # STOCK ÓPTIMO SIEMPRE SE CALCULA
             # ============================================================
-            if calidad in ["Sin datos suficientes", "No confiable"]:
-                metodo = "Regla"
-                stock_optimo = max(0, round(grupo["StockActual"].iloc[0] * factor_seguridad))
-            else:
-                metodo = "IA"
-                stock_optimo = max(0, round(demanda_futura * factor_seguridad))
+            metodo = "IA"
+            stock_optimo = max(0, round(demanda_futura * factor_seguridad))
 
         resultados.append({
             "InventarioId": inv_id,
@@ -303,9 +302,6 @@ def generar_resultados_inventario():
     else:
         vencimientos_por_mes = {}
 
-    # ============================================================
-    # 🔥 STOCK POR CATEGORÍA — TOP 10 ORDENADO COMO LISTA
-    # ============================================================
     stock_por_categoria_df = (
         df_final.groupby("Categoria")["StockActual"]
         .sum()
@@ -319,7 +315,6 @@ def generar_resultados_inventario():
         for _, row in stock_por_categoria_df.iterrows()
     ]
 
-    # ---------------- ROTACIÓN ----------------
     top_rotacion = df_final.sort_values("DemandaFutura", ascending=False).head(10).to_dict(orient="records")
 
     return {

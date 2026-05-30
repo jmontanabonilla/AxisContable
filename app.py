@@ -11,6 +11,8 @@ from num2words import num2words
 from decimal import Decimal
 from modelos.inventarios.inventarios_modelo import generar_resultados_inventario
 from modelos.inventarios.dasboard_inventarios import generar_kpis_inventario
+from modelos.facturasproveedores.dashboard_facturasproveedores import generar_kpis_facturas_proveedores
+from modelos.gastos.dashboard_gastos import generar_kpis_gastos
 import hashlib
 import math
 import functools
@@ -1862,11 +1864,10 @@ def gastos_generales_page():
         fecha = (request.form.get("fecha") or "").strip()
         tipo_registro_id = request.form.get("tipo_registro_id")
         descripcion = (request.form.get("descripcion") or "").strip()
-        categoria_id = request.form.get("categoria_id")
         valor = (request.form.get("valor") or "").strip()
         usuario_id = session.get("user_id")
 
-        if not fecha or not tipo_registro_id or not descripcion or not categoria_id or not valor:
+        if not fecha or not tipo_registro_id or not descripcion or not valor:
             flash("Todos los campos son obligatorios.", "danger")
             return redirect(url_for("gastos_generales_page", periodo=periodo_str))
 
@@ -1885,24 +1886,11 @@ def gastos_generales_page():
             flash("No se permite registrar gastos en meses anteriores.", "danger")
             return redirect(url_for("gastos_generales_page", periodo=periodo_str))
 
-        # Validación categoría única por mes
-        row_cat = query_one("SELECT EsUnicaMes FROM CategoriasGasto WHERE Id = ?", (categoria_id,))
-        es_unica = bool(row_cat[0]) if row_cat else False
-
-        if es_unica:
-            existe = query_one("""
-                SELECT Id FROM GastosGenerales
-                WHERE Estado = 1 AND CategoriaId = ? AND MONTH(Fecha) = ? AND YEAR(Fecha) = ?
-            """, (categoria_id, mes, año))
-            if existe:
-                flash("Ya existe un gasto registrado en esta categoría para este mes.", "danger")
-                return redirect(url_for("gastos_generales_page", periodo=periodo_str))
-
         # INSERT
         exec_sql("""
-            INSERT INTO GastosGenerales (Fecha, TipoRegistroId, Descripcion, CategoriaId, Valor, UsuarioId, FechaRegistro, Estado)
-            VALUES (?, ?, ?, ?, ?, ?, GETDATE(), 1)
-        """, (fecha, tipo_registro_id, descripcion, categoria_id, valor, usuario_id))
+            INSERT INTO GastosGenerales (Fecha, TipoRegistroId, Descripcion, Valor, UsuarioId, FechaRegistro, Estado)
+            VALUES (?, ?, ?, ?, ?, GETDATE(), 1)
+        """, (fecha, tipo_registro_id, descripcion, valor, usuario_id))
 
         flash("Gasto registrado exitosamente.", "success")
         return redirect(url_for("gastos_generales_page", periodo=periodo_str))
@@ -1930,14 +1918,13 @@ def gastos_generales_page():
     params = [mes, año]
 
     if search:
-        where += " AND (g.Descripcion LIKE ? OR c.Nombre LIKE ? OR tr.NombreTipo LIKE ?)"
+        where += " AND (g.Descripcion LIKE ? OR tr.NombreTipo LIKE ?)"
         like = f"%{search}%"
-        params.extend([like, like, like])
+        params.extend([like, like])
 
     total_row = query_one(f"""
         SELECT COUNT(*)
         FROM GastosGenerales g
-        JOIN CategoriasGasto c ON g.CategoriaId = c.Id
         JOIN TiposRegistro tr ON g.TipoRegistroId = tr.Id
         WHERE {where}
     """, tuple(params))
@@ -1945,10 +1932,14 @@ def gastos_generales_page():
     total_pages = max(1, (total + page_size - 1) // page_size)
 
     rows = query_all(f"""
-        SELECT g.Id, g.Fecha, tr.NombreTipo, g.Descripcion, c.Nombre, g.Valor, g.FechaRegistro,
-               g.CategoriaId, g.TipoRegistroId
+        SELECT g.Id,
+               g.Fecha,
+               tr.NombreTipo,
+               g.Descripcion,
+               g.Valor,
+               g.FechaRegistro,
+               g.TipoRegistroId
         FROM GastosGenerales g
-        JOIN CategoriasGasto c ON g.CategoriaId = c.Id
         JOIN TiposRegistro tr ON g.TipoRegistroId = tr.Id
         WHERE {where}
         ORDER BY g.Id DESC
@@ -1960,18 +1951,10 @@ def gastos_generales_page():
         "fecha": r[1].strftime("%Y-%m-%d"),
         "tipo_registro": r[2],
         "descripcion": r[3],
-        "categoria": r[4],
-        "valor": float(r[5]),
-        "fecha_registro": r[6].strftime("%Y-%m-%d %H:%M"),
-        "categoria_id": r[7],
-        "tipo_registro_id": r[8]
+        "valor": float(r[4]),
+        "fecha_registro": r[5].strftime("%Y-%m-%d %H:%M"),
+        "tipo_registro_id": r[6]
     } for r in rows]
-
-    categorias = [{
-        "id": r[0],
-        "nombre": r[1],
-        "es_unica": bool(r[2])
-    } for r in query_all("SELECT Id, Nombre, EsUnicaMes FROM CategoriasGasto WHERE Estado = 1 ORDER BY Nombre ASC")]
 
     tipos_registro = query_all("""
         SELECT Id, NombreTipo
@@ -1992,7 +1975,6 @@ def gastos_generales_page():
         "gastos_generales.html",
         menu=menu,
         gastos=gastos,
-        categorias=categorias,
         tipos_registro=tipos_registro,
         page=page,
         total_pages=total_pages,
@@ -2035,36 +2017,27 @@ def editar_gasto_general(gasto_id):
     fecha = request.form.get("fecha_edit")
     tipo_registro_id = request.form.get("tipo_registro_id_edit")
     descripcion = request.form.get("descripcion_edit")
-    categoria_id = request.form.get("categoria_id_edit")
     valor = request.form.get("valor_edit")
 
-    if not fecha or not tipo_registro_id or not descripcion or not categoria_id or not valor:
+    if not fecha or not tipo_registro_id or not descripcion or not valor:
         flash("Todos los campos son obligatorios.", "danger")
         return redirect(url_for("gastos_generales_page", periodo=periodo_str))
 
-    fecha_dt = datetime.strptime(fecha, "%Y-%m-%d")
+    try:
+        fecha_dt = datetime.strptime(fecha, "%Y-%m-%d")
+    except:
+        flash("Formato de fecha inválido.", "danger")
+        return redirect(url_for("gastos_generales_page", periodo=periodo_str))
+
     if not (inicio_mes <= fecha_dt <= fin_mes):
         flash("La fecha debe estar dentro del período seleccionado.", "danger")
         return redirect(url_for("gastos_generales_page", periodo=periodo_str))
 
-    # Validación categoría única
-    row_cat = query_one("SELECT EsUnicaMes FROM CategoriasGasto WHERE Id = ?", (categoria_id,))
-    es_unica = bool(row_cat[0]) if row_cat else False
-
-    if es_unica:
-        existe = query_one("""
-            SELECT Id FROM GastosGenerales
-            WHERE Estado = 1 AND CategoriaId = ? AND MONTH(Fecha) = ? AND YEAR(Fecha) = ? AND Id <> ?
-        """, (categoria_id, mes, año, gasto_id))
-        if existe:
-            flash("Ya existe otro gasto en esta categoría para este mes.", "danger")
-            return redirect(url_for("gastos_generales_page", periodo=periodo_str))
-
     exec_sql("""
         UPDATE GastosGenerales
-        SET Fecha = ?, TipoRegistroId = ?, Descripcion = ?, CategoriaId = ?, Valor = ?, FechaRegistro = GETDATE()
+        SET Fecha = ?, TipoRegistroId = ?, Descripcion = ?, Valor = ?, FechaRegistro = GETDATE()
         WHERE Id = ?
-    """, (fecha, tipo_registro_id, descripcion, categoria_id, valor, gasto_id))
+    """, (fecha, tipo_registro_id, descripcion, valor, gasto_id))
 
     flash("Gasto actualizado correctamente.", "success")
     return redirect(url_for("gastos_generales_page", periodo=periodo_str))
@@ -3343,24 +3316,29 @@ def inventarios_page():
         demanda_esperada = datos_ia.get("DemandaEsperada", 0)
         demanda_esperada = max(0, float(demanda_esperada))
 
-        # ---------------- PROYECCIÓN IA (SIEMPRE NÚMERO) ----------------
+# ---------------- PROYECCIÓN IA ----------------
         if usar_proyeccion_real == 0:
             proyeccion_ia = "OFF"
         else:
             proyeccion_ia = f"{stock_optimo} unidades"
 
-        # ---------------- VALORACIÓN ----------------
+        # ---------------- VALORACIÓN (NUEVA LÓGICA) ----------------
         if usar_proyeccion_real == 0:
             valoracion = "OFF"
         else:
-            # Si la demanda es muy baja o el modelo fue marcado como no confiable/sin datos,
-            # no mostramos estados "Confiable" ni similares.
-            if demanda_esperada <= 1 or calidad == "Sin datos suficientes":
-                valoracion = "Sin datos suficientes"
+            # Mostrar SIEMPRE la calidad del modelo tal cual viene de la BD
+            if calidad == "Confiable":
+                valoracion = "Confiable"
+            elif calidad == "Precaución":
+                valoracion = "Precaución"
+            elif calidad == "Inestable":
+                valoracion = "Inestable"
             elif calidad == "No confiable":
                 valoracion = "No confiable"
             else:
-                valoracion = calidad
+                valoracion = "Sin datos suficientes"
+
+
 
         productos.append({
             "id": inv_id,
@@ -3908,11 +3886,21 @@ def inactivar_tipo_registro(tipo_id):
 def dashboard_ventas():
     return render_template("dashboard_ventas.html")
 
+
+
 # ---------------- ROUTES: Dashboard Gastos ----------------
 
 @app.route("/gastos/dashboard")
+@require_permission("GASTOS", "ver")
 def dashboard_gastos():
-    return render_template("dashboard_gastos.html")
+
+    kpis = generar_kpis_gastos()
+
+    return render_template(
+        "dashboard_gastos.html",
+        kpis=kpis
+    )
+
 
 # ---------------- ROUTES: Dashboard Inventarios ----------------
 
@@ -3928,11 +3916,16 @@ def dashboard_inventarios():
     )
 
 # ---------------- ROUTES: Dashboard Facturas Proveedores ----------------
-@app.route("/facturas_proveedores/dashboard")
+@app.route("/dashboard_facturas_proveedores")
+@require_permission("PROVEEDORES", "ver")
 def dashboard_facturas_proveedores():
-    return render_template("dashboard_facturas_proveedores.html")
 
+    kpis = generar_kpis_facturas_proveedores()
 
+    return render_template(
+        "dashboard_facturas_proveedores.html",
+        kpis=kpis
+    )
 
 
 # --------------- run ----------------
