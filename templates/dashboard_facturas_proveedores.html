@@ -7,6 +7,7 @@
         border-radius: 14px;
         transition: 0.25s ease-in-out;
         height: 100%;
+        cursor: pointer;
     }
     .kpi-card:hover {
         transform: translateY(-6px);
@@ -25,36 +26,12 @@
         border-radius: 14px;
         overflow-x: auto;
     }
-
-    @media (max-width: 992px) {
-        .kpi-card .card-body {
-            text-align: center;
-        }
-        .chart-card {
-            margin-bottom: 20px;
-        }
+    .table thead th {
+        background-color: #f8f9fa;
+        font-weight: 600;
     }
-
-    @media (max-width: 768px) {
-        h2.fw-bold {
-            font-size: 1.4rem;
-        }
-        .kpi-icon {
-            font-size: 28px;
-        }
-        .card-body h3 {
-            font-size: 1.3rem;
-        }
-    }
-
-    @media (max-width: 576px) {
-        .row.g-4 > [class*="col-"] {
-            flex: 0 0 100%;
-            max-width: 100%;
-        }
-        .chart-card canvas {
-            height: 220px !important;
-        }
+    .table-hover tbody tr:hover {
+        background-color: #f1f3f5;
     }
 </style>
 
@@ -63,29 +40,47 @@
     <!-- TÍTULO -->
     <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap">
         <h2 class="fw-bold mb-2">📑 Dashboard Facturas Proveedores</h2>
+        <span class="text-muted small">
+            Horizonte vencimiento (alertas): ±{{ kpis.horizonte_vencimiento }} días ·
+            Horizonte proyección pagos: ±{{ kpis.horizonte_proyeccion }} días
+        </span>
     </div>
 
-    <!-- KPIs -->
+    <!-- ========================= -->
+    <!-- FILA 1 — KPIs PRINCIPALES -->
+    <!-- ========================= -->
     <div class="row g-4 mb-4">
 
+        <!-- 1. Total Facturas -->
         <div class="col-sm-6 col-md-3">
-            <div class="card shadow-sm kpi-card">
+            <div class="card shadow-sm kpi-card" data-bs-toggle="modal" data-bs-target="#modalTotalFacturas">
                 <div class="card-body text-center">
-                    <div class="kpi-icon text-primary mb-2">
-                        <i class="bi bi-receipt"></i>
-                    </div>
+                    <div class="kpi-icon text-primary mb-2"><i class="bi bi-receipt"></i></div>
                     <h6 class="text-muted">Total Facturas</h6>
-                    <h3 class="fw-bold">{{ kpis.total_facturas }}</h3>
+                    <h3 class="fw-bold">{{ kpis.total_facturas_global }}</h3>
+                    <small class="text-muted">  ${{ "{:,.0f}".format(kpis.total_general_global).replace(",", ".") }} </small>
                 </div>
             </div>
         </div>
 
+        <!-- 2. Facturas Pagadas -->
         <div class="col-sm-6 col-md-3">
-            <div class="card shadow-sm kpi-card">
+            <div class="card shadow-sm kpi-card" data-bs-toggle="modal" data-bs-target="#modalFacturasPagadas">
                 <div class="card-body text-center">
-                    <div class="kpi-icon text-danger mb-2">
-                        <i class="bi bi-cash"></i>
-                    </div>
+                    <div class="kpi-icon text-info mb-2"><i class="bi bi-wallet2"></i></div>
+                    <h6 class="text-muted">Facturas Pagadas</h6>
+                    <h3 class="fw-bold text-info">
+                        ${{ "{:,.0f}".format(kpis.facturas_pagadas).replace(",", ".") }}
+                    </h3>
+                </div>
+            </div>
+        </div>
+
+        <!-- 3. Cuentas por Pagar -->
+        <div class="col-sm-6 col-md-3">
+            <div class="card shadow-sm kpi-card" data-bs-toggle="modal" data-bs-target="#modalCuentasPagar">
+                <div class="card-body text-center">
+                    <div class="kpi-icon text-danger mb-2"><i class="bi bi-cash"></i></div>
                     <h6 class="text-muted">Cuentas por Pagar</h6>
                     <h3 class="fw-bold text-danger">
                         ${{ "{:,.0f}".format(kpis.total_cuentas_por_pagar).replace(",", ".") }}
@@ -94,53 +89,101 @@
             </div>
         </div>
 
+        <!-- 4. Flujo Caja Proyectado -->
         <div class="col-sm-6 col-md-3">
-            <div class="card shadow-sm kpi-card">
+            <div class="card shadow-sm kpi-card" data-bs-toggle="modal" data-bs-target="#modalFlujoProyectado">
                 <div class="card-body text-center">
-                    <div class="kpi-icon text-success mb-2">
-                        <i class="bi bi-graph-up-arrow"></i>
-                    </div>
+                    <div class="kpi-icon text-success mb-2"><i class="bi bi-graph-up-arrow"></i></div>
                     <h6 class="text-muted">Flujo Caja Proyectado</h6>
+
                     <h3 class="fw-bold text-success">
                         ${{ "{:,.0f}".format(kpis.flujo_caja_proyectado).replace(",", ".") }}
+                    </h3>
+
+                    <small class="text-muted">
+                        Horizonte: ±{{ kpis.horizonte_proyeccion }} días
+                    </small>
+                </div>
+            </div>
+        </div>
+
+
+        <!-- 5. Alertas -->
+        <div class="col-sm-6 col-md-3">
+            <div class="card shadow-sm kpi-card" data-bs-toggle="modal" data-bs-target="#modalAlertas">
+                <div class="card-body text-center">
+                    <div class="kpi-icon text-warning mb-2"><i class="bi bi-exclamation-triangle"></i></div>
+                    <h6 class="text-muted">Alertas de Vencimiento</h6>
+                    <h3 class="fw-bold text-warning">{{ kpis.alertas_vencimiento }}</h3>
+                    <small class="text-muted">≤ {{ kpis.horizonte_vencimiento }} días</small>
+                </div>
+            </div>
+        </div>
+
+
+        <!-- 6. Facturas Vencidas -->
+        <div class="col-sm-6 col-md-3">
+            <div class="card shadow-sm kpi-card" data-bs-toggle="modal" data-bs-target="#modalFacturasVencidas">
+                <div class="card-body text-center">
+                    <div class="kpi-icon text-danger mb-2"><i class="bi bi-calendar-x"></i></div>
+                    <h6 class="text-muted">Facturas Vencidas</h6>
+                    <h3 class="fw-bold text-danger">
+                        ${{ "{:,.0f}".format(kpis.por_pagar_vencido).replace(",", ".") }}
                     </h3>
                 </div>
             </div>
         </div>
 
+        <!-- 7. Próximas a Vencer -->
         <div class="col-sm-6 col-md-3">
-            <div class="card shadow-sm kpi-card">
+            <div class="card shadow-sm kpi-card" data-bs-toggle="modal" data-bs-target="#modalProximasVencer">
                 <div class="card-body text-center">
-                    <div class="kpi-icon text-warning mb-2">
-                        <i class="bi bi-exclamation-triangle"></i>
+                    <div class="kpi-icon text-warning mb-2"><i class="bi bi-hourglass-split"></i></div>
+                    <h6 class="text-muted">Próximas a Vencer</h6>
+                    <h3 class="fw-bold text-warning">
+                        ${{ "{:,.0f}".format(kpis.por_pagar_proximo_vencimiento).replace(",", ".") }}
+                    </h3>
+                </div>
+            </div>
+        </div>
+
+        <!-- 8. Proyección de Pagos -->
+        <div class="col-sm-6 col-md-3">
+            <div class="card shadow-sm kpi-card" data-bs-toggle="modal" data-bs-target="#modalProyeccionPagos">
+                <div class="card-body text-center">
+                    <div class="kpi-icon text-success mb-2">
+                        <i class="bi bi-graph-up"></i>
                     </div>
-                    <h6 class="text-muted">Alertas de Vencimiento</h6>
-                    <h3 class="fw-bold text-warning">{{ kpis.alertas_vencimiento }}</h3>
+                    <h6 class="text-muted">Proyección de Pagos</h6>
+
+                    <h3 class="fw-bold text-success">
+                        ${{ "{:,.0f}".format(kpis.proyeccion_pagos).replace(",", ".") }}
+                    </h3>
                 </div>
             </div>
         </div>
 
     </div>
 
-    <!-- GRÁFICOS -->
+    <!-- ========================= -->
+    <!-- GRÁFICOS — FILA 1         -->
+    <!-- ========================= -->
     <div class="row g-4 mb-4">
 
+        <!-- Gráfico Estados -->
         <div class="col-lg-6 col-md-12">
             <div class="card shadow-sm chart-card">
-                <div class="card-header fw-bold bg-light">
-                    📌 Estados de Facturas
-                </div>
+                <div class="card-header fw-bold bg-light">📌 Estados de Facturas</div>
                 <div class="card-body">
                     <canvas id="chartEstados" height="180"></canvas>
                 </div>
             </div>
         </div>
 
+        <!-- Gráfico Proveedores -->
         <div class="col-lg-6 col-md-12">
             <div class="card shadow-sm chart-card">
-                <div class="card-header fw-bold bg-light">
-                    💰 Monto por Proveedor (Top 10)
-                </div>
+                <div class="card-header fw-bold bg-light">💰 Monto por Proveedor</div>
                 <div class="card-body">
                     <canvas id="chartProveedores" height="180"></canvas>
                 </div>
@@ -149,104 +192,541 @@
 
     </div>
 
-    <!-- TABLA -->
+    <!-- ========================= -->
+    <!-- GRÁFICOS — FILA 2         -->
+    <!-- ========================= -->
+    <div class="row g-4 mb-4">
+
+        <!-- Gráfico Regresión -->
+        <div class="col-lg-12 col-md-12">
+            <div class="card shadow-sm chart-card">
+                <div class="card-header fw-bold bg-light">📈 Tendencia de Pagos</div>
+                <div class="card-body">
+                    <canvas id="chartRegresionPagos" height="220"></canvas>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+
+    <!-- ========================= -->
+    <!-- TABLA                     -->
+    <!-- ========================= -->
     <div class="card shadow-sm chart-card mb-5">
-        <div class="card-header fw-bold bg-light">
-            📄 Listado de Facturas
+        <div class="card-header fw-bold bg-light d-flex justify-content-between align-items-center">
+            <span>📄 Facturas pendientes (todas las activas)</span>
+            <small class="text-muted">Total registros: {{ kpis.lista_facturas|length }}</small>
         </div>
 
         <div class="card-body table-responsive">
-
-            <table class="table table-hover align-middle">
+            <table id="tablaFacturas" class="table table-hover align-middle">
                 <thead class="table-light">
                     <tr>
-                        <th>Proveedor</th>
+                        <th>Número de factura</th>
+                        <th>Fecha de emisión</th>
+                        <th>Fecha de vencimiento</th>
                         <th>Estado</th>
                         <th>Monto</th>
-                        <th>Fecha Emisión</th>
-                        <th>Fecha Vencimiento</th>
-                        <th>Días al Vencimiento</th>
+                        <th>Días al vencimiento</th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for f in kpis.lista_facturas %}
                     <tr>
-                        <td>{{ f.Proveedor }}</td>
-                        <td>
-                            {% if f.Estado == "Pendiente" %}
-                                <span class="badge bg-danger">Pendiente</span>
-                            {% elif f.Estado == "Pagada" %}
-                                <span class="badge bg-success">Pagada</span>
-                            {% else %}
-                                <span class="badge bg-secondary">{{ f.Estado }}</span>
-                            {% endif %}
-                        </td>
-                        <td>${{ "{:,.0f}".format(f.MontoTotal).replace(",", ".") }}</td>
+                        <td>{{ f.NumeroFactura }}</td>
                         <td>{{ f.FechaEmision }}</td>
                         <td>{{ f.FechaVencimiento }}</td>
                         <td>
                             {% if f.EsVencida %}
-                                <span class="text-danger fw-bold">{{ f.DiasAlVencimiento }}</span>
+                                <span class="badge bg-danger">Vencida</span>
                             {% elif f.EsProximaVencer %}
-                                <span class="text-warning fw-bold">{{ f.DiasAlVencimiento }}</span>
+                                <span class="badge bg-warning text-dark">Próxima</span>
                             {% else %}
-                                <span class="text-success">{{ f.DiasAlVencimiento }}</span>
+                                <span class="badge bg-success">Pendiente</span>
+                            {% endif %}
+                        </td>
+                        <td>${{ "{:,.0f}".format(f.MontoTotal).replace(",", ".") }}</td>
+                        <td>
+                            {% if f.EsVencida %}
+                                <span class="text-danger fw-bold">{{ f.DiasAlVencimientoAbs }}</span>
+                            {% elif f.EsProximaVencer %}
+                                <span class="text-warning fw-bold">{{ f.DiasAlVencimientoAbs }}</span>
+                            {% else %}
+                                <span class="text-success">{{ f.DiasAlVencimientoAbs }}</span>
                             {% endif %}
                         </td>
                     </tr>
                     {% endfor %}
                 </tbody>
             </table>
+        </div>
+    </div>
 
+
+    <!-- ========================= -->
+    <!-- MODALES KPI COMPLETOS     -->
+    <!-- ========================= -->
+
+    <!-- 1. Modal Total Facturas -->
+    <div class="modal fade" id="modalTotalFacturas" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title">Detalle de Total Facturas</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <p><strong>Total facturas registradas:</strong> {{ kpis.total_facturas_global }}</p>
+                    <p><strong>Pagadas:</strong> {{ kpis.conteo_estados.get("Pagada", 0) }}</p>
+                    <p><strong>Pendientes:</strong> {{ kpis.conteo_estados.get("Pendiente", 0) }}</p>
+                    <p><strong>Anuladas:</strong> {{ kpis.conteo_estados.get("Anulada", 0) }}</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 2. Modal Facturas Pagadas -->
+    <div class="modal fade" id="modalFacturasPagadas" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header bg-info text-white">
+                    <h5 class="modal-title">Detalle de Facturas Pagadas</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <p><strong>Total facturas pagadas (monto):</strong>
+                        ${{ "{:,.0f}".format(kpis.facturas_pagadas).replace(",", ".") }}</p>
+                    <p class="text-muted mb-0">
+                        Basado en todas las facturas con estado <code>Pagada</code> en la base de datos.
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 3. Modal Cuentas por Pagar -->
+    <div class="modal fade" id="modalCuentasPagar" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+
+                <div class="modal-header bg-danger text-white">
+                    <h5 class="modal-title">Detalle de Cuentas por Pagar</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+
+                <div class="modal-body">
+
+                    <p><strong>Obligación neta:</strong><br>
+                        ${{ "{:,.0f}".format(kpis.total_cuentas_por_pagar).replace(",", ".") }}
+                    </p>
+
+                    <hr>
+
+                    <!-- Detalle por categorías -->
+                    <p><strong>Al día:</strong><br>
+                        ${{ "{:,.0f}".format(kpis.por_pagar_al_dia).replace(",", ".") }}
+                    </p>
+
+                    <p><strong>Próximo vencimiento:</strong><br>
+                        ${{ "{:,.0f}".format(kpis.por_pagar_proximo_vencimiento).replace(",", ".") }}
+                    </p>
+
+                    <p><strong>Vencido:</strong><br>
+                        ${{ "{:,.0f}".format(kpis.por_pagar_vencido).replace(",", ".") }}
+                    </p>
+
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <!-- 4. Modal Flujo Caja Proyectado -->
+    <div class="modal fade" id="modalFlujoProyectado" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+
+                <div class="modal-header bg-success text-white">
+                    <h5 class="modal-title">
+                        Detalle de Flujo de Caja Proyectado
+                        <small class="text-light"> (±{{ kpis.horizonte_proyeccion }} días)</small>
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+
+                <div class="modal-body">
+
+                    <p class="mb-2">
+                        <strong>Flujo de caja proyectado total:</strong><br>
+                        ${{ "{:,.0f}".format(kpis.flujo_caja_proyectado).replace(",", ".") }}
+                    </p>
+
+                    <hr>
+
+                    <p class="fw-bold mb-1">Distribución sugerida:</p>
+                    <ul class="mb-3">
+                        <li>
+                            <strong>Gastos generales:</strong>
+                            ${{ "{:,.0f}".format(kpis.asignacion_proyectada.gastos_generales).replace(",", ".") }}
+                            <span class="text-muted">({{ kpis.porcentaje_gastos }}%)</span>
+                        </li>
+                        <li>
+                            <strong>Facturas proveedores:</strong>
+                            ${{ "{:,.0f}".format(kpis.asignacion_proyectada.facturas_proveedores).replace(",", ".") }}
+                            <span class="text-muted">({{ kpis.porcentaje_facturas }}%)</span>
+                        </li>
+                        <li>
+                            <strong>Reserva:</strong>
+                            ${{ "{:,.0f}".format(kpis.asignacion_proyectada.reserva).replace(",", ".") }}
+                            <span class="text-muted">({{ kpis.porcentaje_reserva }}%)</span>
+                        </li>
+                    </ul>
+
+                    <p class="text-muted small mb-0">
+                        Cálculo basado en promedios históricos y parámetros configurados.<br>
+                        Fecha de cálculo: {{ kpis.fecha_calculo_flujo }}<br>
+                        Modo de cálculo: <strong>{{ kpis.modo_flujo|capitalize }}</strong>.
+                    </p>
+
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+
+    <!-- 5. Modal Alertas -->
+    <div class="modal fade" id="modalAlertas" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered modal-lg">
+            <div class="modal-content">
+
+                <div class="modal-header bg-warning text-dark">
+                    <h5 class="modal-title">
+                        Detalle de Alertas de Vencimiento 
+                        <small class="text-muted"> (≤ {{ kpis.horizonte_vencimiento }} días)</small>
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+
+                <div class="modal-body">
+
+                    <p class="mb-2"><strong>Total alertas:</strong> {{ kpis.alertas_vencimiento }}</p>
+
+                    <div class="row">
+
+                        <!-- Próximas a vencer -->
+                        <div class="col-md-4">
+                            <h6 class="fw-bold">Próximas a vencer</h6>
+                            <ul class="small">
+                                {% for a in kpis.detalle_alertas.proximas_vencer %}
+                                    <li>
+                                        Factura {{ a.NumeroFactura }} — {{ a.NombreProveedor }}<br>
+                                        ${{ "{:,.0f}".format(a.MontoTotal).replace(",", ".") }}
+                                        <span class="text-muted">({{ a.DiasAlVencimientoAbs }} días)</span>
+                                    </li>
+                                {% endfor %}
+                                {% if not kpis.detalle_alertas.proximas_vencer %}
+                                    <li class="text-muted">Sin registros</li>
+                                {% endif %}
+                            </ul>
+                        </div>
+
+                        <!-- Vencidas -->
+                        <div class="col-md-4">
+                            <h6 class="fw-bold">Vencidas</h6>
+                            <ul class="small">
+                                {% for a in kpis.detalle_alertas.vencidas[:5] %}
+                                    <li>
+                                        Factura {{ a.NumeroFactura }} — {{ a.NombreProveedor }}<br>
+                                        ${{ "{:,.0f}".format(a.MontoTotal).replace(",", ".") }}
+                                        <span class="text-muted">({{ a.DiasAlVencimientoAbs }} días)</span>
+                                    </li>
+                                {% endfor %}
+                                {% if not kpis.detalle_alertas.vencidas %}
+                                    <li class="text-muted">Sin registros</li>
+                                {% endif %}
+                            </ul>
+                        </div>
+
+                        <!-- Alto riesgo -->
+                        <div class="col-md-4">
+                            <h6 class="fw-bold">Alto riesgo por monto</h6>
+                            <ul class="small">
+                                {% for a in kpis.detalle_alertas.alto_riesgo[:5] %}
+                                    <li>
+                                        Factura {{ a.NumeroFactura }} — {{ a.NombreProveedor }}<br>
+                                        ${{ "{:,.0f}".format(a.MontoTotal).replace(",", ".") }}
+                                    </li>
+                                {% endfor %}
+                                {% if not kpis.detalle_alertas.alto_riesgo %}
+                                    <li class="text-muted">Sin registros</li>
+                                {% endif %}
+                            </ul>
+                        </div>
+
+                    </div>
+
+                </div>
+            </div>
+        </div>
+    </div>
+
+
+    <!-- 6. Modal Facturas Vencidas -->
+    <div class="modal fade" id="modalFacturasVencidas" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header bg-danger text-white">
+                    <h5 class="modal-title">Facturas Vencidas</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <p><strong>Monto vencido:</strong>
+                        ${{ "{:,.0f}".format(kpis.por_pagar_vencido).replace(",", ".") }}</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 7. Modal Próximas a Vencer -->
+    <div class="modal fade" id="modalProximasVencer" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header bg-warning text-dark">
+                    <h5 class="modal-title">Próximas a Vencer</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <p><strong>Monto próximo a vencer:</strong>
+                        ${{ "{:,.0f}".format(kpis.por_pagar_proximo_vencimiento).replace(",", ".") }}</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 8. Modal Proyección de Pagos -->
+    <div class="modal fade" id="modalProyeccionPagos" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+
+                <div class="modal-header bg-success text-white">
+                    <h5 class="modal-title">Proyección de Pagos</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+
+                <div class="modal-body">
+
+                    <p class="mb-2">
+                        <strong>Proyección estimada:</strong><br>
+                        ${{ "{:,.0f}".format(kpis.proyeccion_pagos).replace(",", ".") }}
+                    </p>
+
+                    <hr>
+
+                    <p class="fw-bold mb-1">Detalle de tendencia:</p>
+                    <ul class="mb-3">
+                        <li>
+                            <strong>Últimos meses analizados:</strong>
+                            {{ kpis.proyeccion_regresion['periodos'][:kpis.proyeccion_regresion['montos_historicos']|length] }}
+                        </li>
+                        <li>
+                            <strong>Promedio histórico mensual:</strong>
+
+                            {% set total = kpis.proyeccion_regresion['montos_historicos']|sum %}
+                            {% set count = kpis.proyeccion_regresion['montos_historicos']|length %}
+
+                            {% if count > 0 %}
+                                ${{ "{:,.0f}".format(total / count).replace(",", ".") }}
+                            {% else %}
+                                $0
+                            {% endif %}
+                        </li>
+
+
+                        <li>
+                            <strong>Calidad del modelo:</strong>
+                            {{ kpis.proyeccion_regresion['calidad'] }}
+                        </li>
+                    </ul>
+
+                    <p class="text-muted small mb-0">
+                        Este valor corresponde al promedio de los próximos meses proyectados,
+                        basado en la tendencia histórica de pagos.
+                    </p>
+
+                </div>
+
+            </div>
         </div>
     </div>
 
 </div>
 
+{% endblock %}
+
+{% block scripts %}
+
+<!-- Chart.js -->
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<!-- jQuery + DataTables -->
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+<script src="https://cdn.datatables.net/1.13.4/js/jquery.dataTables.min.js"></script>
+<link rel="stylesheet"
+      href="https://cdn.datatables.net/1.13.4/css/jquery.dataTables.min.css"/>
 
 <script>
 document.addEventListener("DOMContentLoaded", function() {
-    const estados = {{ (kpis.conteo_estados or {}) | tojson }};
+
+    /* ============================
+       DATOS DESDE BACKEND
+    ============================ */
+    const estados     = {{ (kpis.conteo_estados or {}) | tojson }};
     const proveedores = {{ (kpis.monto_por_proveedor or []) | tojson }};
+    const regresion   = {{ (kpis.proyeccion_regresion or {}) | tojson }};
 
-    // Pie: estados
-    new Chart(document.getElementById("chartEstados"), {
-        type: "pie",
-        data: {
-            labels: Object.keys(estados),
-            datasets: [{
-                data: Object.values(estados),
-                backgroundColor: ["#198754", "#dc3545", "#6c757d"]
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false
+
+    /* ============================
+       GRÁFICO 1 — ESTADOS
+    ============================ */
+    if (estados && Object.keys(estados).length > 0) {
+
+        const labelsEstados = Object.keys(estados);
+        const valoresEstados = Object.values(estados).map(v => v ?? 0);
+
+        new Chart(document.getElementById("chartEstados"), {
+            type: "pie",
+            data: {
+                labels: labelsEstados,
+                datasets: [{
+                    data: valoresEstados,
+                    backgroundColor: ["#198754", "#dc3545", "#6c757d"]
+                }]
+            },
+            options: { 
+                responsive: true, 
+                maintainAspectRatio: false 
+            }
+        });
+    }
+
+
+    /* ============================
+       GRÁFICO 2 — PROVEEDORES
+    ============================ */
+    if (proveedores && proveedores.length > 0) {
+
+        const top = proveedores
+            .filter(r => r.Proveedor && r.Monto != null)
+            .slice(0, 10);
+
+        new Chart(document.getElementById("chartProveedores"), {
+            type: "bar",
+            data: {
+                labels: top.map(r => r.Proveedor),
+                datasets: [{
+                    label: "Monto",
+                    data: top.map(r => r.Monto),
+                    backgroundColor: "rgba(13,110,253,0.7)",
+                    borderColor: "#0d6efd",
+                    borderWidth: 2,
+                    borderRadius: 6
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { display: false }},
+                scales: { 
+                    y: { 
+                        beginAtZero: true,
+                        ticks: { callback: v => "$" + v.toLocaleString("es-CO") }
+                    }
+                }
+            }
+        });
+    }
+
+
+    /* ============================
+       GRÁFICO 3 — REGRESIÓN (HISTÓRICO + PROYECCIÓN)
+    ============================ */
+    if (
+        regresion &&
+        Array.isArray(regresion.periodos) &&
+        Array.isArray(regresion.montos_historicos) &&
+        Array.isArray(regresion.montos_proyectados) &&
+        regresion.periodos.length > 0
+    ) {
+
+        new Chart(document.getElementById("chartRegresionPagos"), {
+            type: "line",
+            data: {
+                labels: regresion.periodos,
+                datasets: [
+                    {
+                        label: "Histórico",
+                        data: regresion.montos_historicos,
+                        borderColor: "#0d6efd",
+                        backgroundColor: "rgba(13,110,253,0.15)",
+                        borderWidth: 3,
+                        pointRadius: 5,
+                        pointBackgroundColor: "#0d6efd",
+                        fill: false,
+                        tension: 0.4
+                    },
+                    {
+                        label: "Proyectado",
+                        data: regresion.montos_proyectados,
+                        borderColor: "#198754",
+                        backgroundColor: "rgba(25,135,84,0.15)",
+                        borderWidth: 3,
+                        pointRadius: 5,
+                        pointBackgroundColor: "#198754",
+                        borderDash: [6, 6],
+                        fill: false,
+                        tension: 0.4
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { 
+                    legend: { position: "top" },
+                    tooltip: {
+                        callbacks: {
+                            label: ctx => "$" + ctx.parsed.y.toLocaleString("es-CO")
+                        }
+                    }
+                },
+                scales: { 
+                    y: { 
+                        beginAtZero: true,
+                        ticks: { callback: v => "$" + v.toLocaleString("es-CO") }
+                    },
+                    x: {
+                        ticks: { color: "#6c757d" }
+                    }
+                }
+            }
+        });
+    }
+
+
+    /* ============================
+       TABLA — DATATABLES
+    ============================ */
+    $('#tablaFacturas').DataTable({
+        pageLength: 10,
+        lengthChange: false,
+        ordering: true,
+        language: {
+            url: '//cdn.datatables.net/plug-ins/1.13.4/i18n/es-ES.json'
         }
     });
 
-    // Barras: monto por proveedor
-    new Chart(document.getElementById("chartProveedores"), {
-        type: "bar",
-        data: {
-            labels: proveedores.map(r => r.Proveedor),
-            datasets: [{
-                label: "Monto",
-                data: proveedores.map(r => r.Monto),
-                backgroundColor: "rgba(13,110,253,0.7)",
-                borderColor: "#0d6efd",
-                borderWidth: 2,
-                borderRadius: 6
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: { legend: { display: false }},
-            scales: { y: { beginAtZero: true } }
-        }
-    });
 });
 </script>
 

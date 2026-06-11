@@ -1,22 +1,500 @@
 {% extends "base.html" %}
-
 {% block content %}
+
+<style>
+.chart-center {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100%;
+}
+</style>
 
 <div class="container-fluid">
 
-    <!-- TÍTULO DEL DASHBOARD -->
-    <div class="d-flex justify-content-between align-items-center mb-4">
-        <h2 class="fw-bold">Dashboard de Ventas</h2>
+    <!-- TÍTULO -->
+    <h2 class="fw-bold mb-4">📊 Dashboard de Ventas</h2>
+
+    <!-- ========================= -->
+    <!-- 🔥 TARJETAS KPI -->
+    <!-- ========================= -->
+    <div class="row g-4 mb-4">
+
+        <!-- Total Ventas -->
+        <div class="col-md-3">
+            <div class="card shadow-sm p-3 text-center"
+                data-bs-toggle="modal" data-bs-target="#modalTotalVentas">
+                <div class="text-primary fs-2 mb-2">
+                    <i class="bi bi-receipt"></i>
+                </div>
+                <h6 class="text-muted">Total Ventas</h6>
+
+                <!-- Total de registros -->
+                <h3 class="fw-bold">{{ kpis.total_registros_ventas }}</h3>
+
+                <!-- Total ventas brutas -->
+                <small class="text-muted">
+                    ${{ "{:,.0f}".format(kpis.total_ventas_brutas).replace(",", ".") }}
+                </small>
+            </div>
+        </div>
+
+
+        <!-- Ventas del Mes -->
+        <div class="col-md-3">
+            <div class="card shadow-sm p-3 text-center"
+                data-bs-toggle="modal" data-bs-target="#modalVentasMes">
+                <div class="text-info fs-2 mb-2">
+                    <i class="bi bi-cash-stack"></i>
+                </div>
+
+                <h6 class="text-muted">Ventas del Mes</h6>
+
+                <!-- Registros del mes actual -->
+                <h3 class="fw-bold text-info">{{ kpis.total_registros_mes }}</h3>
+
+                <!-- Total ventas del mes actual -->
+                <small class="text-muted">
+                    ${{ "{:,.0f}".format(kpis.ventas_mes).replace(",", ".") }}
+                </small>
+            </div>
+        </div>
+
+
+
+        <!-- Ingresos Netos -->
+        <div class="col-md-3">
+            <div class="card shadow-sm p-3 text-center"
+                data-bs-toggle="modal" data-bs-target="#modalIngresos">
+                <div class="text-success fs-2 mb-2">
+                    <i class="bi bi-graph-up-arrow"></i>
+                </div>
+                <h6 class="text-muted">Ingresos Netos</h6>
+
+                <!-- Ingresos netos -->
+                <h3 class="fw-bold text-success">
+                    ${{ "{:,.0f}".format(kpis.ingresos_netos).replace(",", ".") }}
+                </h3>
+
+                <!-- Porcentaje aplicado -->
+                <small class="text-muted">
+                    {{ "{:.0f}".format(kpis.porcentaje_ingreso_neto * 100) }}%
+                </small>
+            </div>
+        </div>
+
+
+        <!-- Proyección IA -->
+        <div class="col-md-3">
+            <div class="card shadow-sm p-3 text-center"
+                 data-bs-toggle="modal" data-bs-target="#modalIA">
+                <div class="text-warning fs-2 mb-2">
+                    <i class="bi bi-cpu"></i>
+                </div>
+                <h6 class="text-muted">Proyección</h6>
+                <h3 class="fw-bold text-warning">
+                    {% if kpis.modelo.prediccion_ia %}
+                        ${{ "{:,.0f}".format(kpis.modelo.prediccion_ia).replace(",", ".") }}
+                    {% else %}
+                        Sin datos
+                    {% endif %}
+                </h3>
+                <small class="text-muted">
+                    Precisión:
+                    {% if kpis.modelo.r2 %}
+                        {{ "{:.1f}".format(kpis.modelo.r2 * 100) }}%
+                    {% else %}
+                        N/D
+                    {% endif %}
+                </small>
+            </div>
+        </div>
+
     </div>
 
-    <!-- CONTENIDO VACÍO (LISTO PARA TUS GRÁFICOS) -->
-    <div class="card shadow-sm">
-        <div class="card-body text-center py-5">
-            <h5 class="text-muted">Aquí irá tu dashboard de ventas</h5>
-            <p class="text-secondary">Puedes agregar gráficos, KPIs, tablas o cualquier visualización.</p>
+    <!-- ========================= -->
+    <!-- 📈 GRÁFICO DE VENTAS + IA -->
+    <!-- ========================= -->
+    <div class="card shadow-sm mb-4">
+        <div class="card-header fw-bold">📈 Ventas por Mes (Histórico + Proyección)</div>
+        <div class="card-body chart-center" style="height: 400px;">
+            <canvas id="chartVentas"></canvas>
         </div>
     </div>
 
+    <!-- ========================= -->
+    <!-- 🧩 FILA 1: TOP CLIENTES + PRODUCTOS -->
+    <!-- ========================= -->
+    <div class="row g-4 mb-4">
+
+        <div class="col-md-6">
+            <div class="card shadow-sm">
+                <div class="card-header fw-bold">🏆 Top Clientes</div>
+                <div class="card-body chart-center" style="height: 400px;">
+                    <canvas id="chartClientes"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-6">
+            <div class="card shadow-sm">
+                <div class="card-header fw-bold">📦 Productos Más Vendidos</div>
+                <div class="card-body chart-center" style="height: 400px;">
+                    <canvas id="chartProductos"></canvas>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- ========================= -->
+    <!-- 🧩 FILA 2: MEDIOS DE PAGO + DEMANDA INVENTARIO -->
+    <!-- ========================= -->
+    <div class="row g-4 mb-4">
+
+        <div class="col-md-6">
+            <div class="card shadow-sm">
+                <div class="card-header fw-bold">💳 Medios de Pago</div>
+                <div class="card-body chart-center" style="height: 350px;">
+                    <canvas id="chartMediosPago"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-6">
+            <div class="card shadow-sm">
+                <div class="card-header fw-bold">📦 Demanda Esperada de Inventario</div>
+                <div class="card-body chart-center" style="height: 350px;">
+                    <canvas id="chartInventario"></canvas>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+</div> <!-- FIN DEL CONTAINER -->
+
+<!-- ========================= -->
+<!-- 🧩 MODALES DEL DASHBOARD -->
+<!-- ========================= -->
+
+<!-- Modal Total Ventas -->
+<div class="modal fade" id="modalTotalVentas" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header bg-primary text-white">
+        <h5 class="modal-title">Detalle de Total Ventas</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <p><strong>Total de registros:</strong> {{ kpis.total_registros_ventas }}</p>
+        <p><strong>Total ventas brutas:</strong> 
+            ${{ "{:,.0f}".format(kpis.total_ventas_brutas).replace(",", ".") }}
+        </p>
+      </div>
+    </div>
+  </div>
 </div>
+
+
+
+<!-- Modal Ventas del Mes -->
+<div class="modal fade" id="modalVentasMes" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header bg-info text-white">
+        <h5 class="modal-title">Detalle de Ventas del Mes</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+
+      <div class="modal-body">
+
+        <p><strong>Registros del mes:</strong> {{ kpis.total_registros_mes }}</p>
+
+        <p><strong>Total ventas del mes:</strong> 
+            ${{ "{:,.0f}".format(kpis.ventas_mes).replace(",", ".") }}
+        </p>
+
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Ingresos Netos -->
+<div class="modal fade" id="modalIngresos" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header bg-success text-white">
+        <h5 class="modal-title">Detalle de Ingresos Netos</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <p><strong>Ingresos netos:</strong> 
+            ${{ "{:,.0f}".format(kpis.ingresos_netos).replace(",", ".") }}
+        </p>
+        <p><strong>Porcentaje aplicado:</strong> 
+            {{ "{:.0f}".format(kpis.porcentaje_ingreso_neto * 100) }}%
+        </p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Proyección IA -->
+<div class="modal fade" id="modalIA" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header bg-warning text-dark">
+        <h5 class="modal-title">Detalle de Proyección IA</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+
+        <p><strong>Proyección próxima:</strong>
+            {% if kpis.modelo.prediccion_ia %}
+                ${{ "{:,.0f}".format(kpis.modelo.prediccion_ia).replace(",", ".") }}
+            {% else %}
+                Sin datos
+            {% endif %}
+        </p>
+
+        <p><strong>Horizonte de proyección:</strong> 
+            {{ kpis.modelo.horizonte_meses }} mes(es)
+        </p>
+
+        <p><strong>Precisión del modelo (R²):</strong> 
+            {% if kpis.modelo.r2 %}
+                {{ "{:.3f}".format(kpis.modelo.r2) }}
+            {% else %}
+                N/D
+            {% endif %}
+        </p>
+
+        <hr>
+
+        <p class="text-muted small">
+            La proyección IA utiliza Random Forest con los últimos 
+            {{ kpis.modelo.horizonte_meses }} mes(es) de tendencia y 
+            genera predicciones mensuales basadas en el comportamiento histórico.
+        </p>
+
+      </div>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+
+/* ============================
+       📈 GRÁFICO VENTAS + IA
+============================ */
+    const ventas = {{ kpis.df_agg | tojson }};
+
+    // Etiquetas YYYY-MM (incluye el mes futuro)
+    const etiquetas = ventas.map(r => r.Periodo);
+
+    // Línea azul: ventas reales (si viene null → 0)
+    const datosReales = ventas.map(r => r.VentasMes ?? 0);
+
+    // Línea amarilla: proyección IA (histórica + futura)
+    const datosIA = ventas.map(r => r.PrediccionIA ?? null);
+
+    const ctxVentas = document.getElementById("chartVentas");
+
+    if (ctxVentas) {
+        new Chart(ctxVentas, {
+            type: "line",
+            data: {
+                labels: etiquetas,
+                datasets: [
+                    {
+                        label: "Ventas Reales",
+                        data: datosReales,
+                        borderColor: "#0d6efd",
+                        backgroundColor: "rgba(13,110,253,0.15)",
+                        borderWidth: 3,
+                        tension: 0.3,
+                        fill: true,
+                        pointRadius: 4,
+                        pointBackgroundColor: "#0d6efd",
+                        spanGaps: true
+                    },
+                    {
+                        label: "Proyección IA",
+                        data: datosIA,
+                        borderColor: "#ff9800",
+                        backgroundColor: "rgba(255,152,0,0.1)",
+                        borderDash: [6, 6],
+                        borderWidth: 3,
+                        tension: 0.3,
+                        fill: false,
+                        pointRadius: 4,
+                        pointBackgroundColor: "#ff9800",
+                        spanGaps: true
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                interaction: {
+                    mode: "index",
+                    intersect: false
+                },
+                plugins: {
+                    legend: { display: true },
+                    tooltip: {
+                        callbacks: {
+                            label: function (ctx) {
+                                const v = ctx.parsed.y;
+                                if (v === null || v === undefined) {
+                                    return ctx.dataset.label + ": sin dato";
+                                }
+                                return ctx.dataset.label + ": $" + v.toLocaleString("es-CO");
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        ticks: {
+                            callback: function (value) {
+                                return "$" + value.toLocaleString("es-CO");
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    // ============================
+    // TOP CLIENTES
+    // ============================
+    const topClientes = {{ kpis.top_clientes | tojson }};
+    const ctxClientes = document.getElementById("chartClientes");
+    if (ctxClientes && topClientes.length > 0) {
+        new Chart(ctxClientes, {
+            type: "bar",
+            data: {
+                labels: topClientes.map(c => c.Nombre),
+                datasets: [{
+                    label: "Monto Total",
+                    data: topClientes.map(c => c.MontoTotal),
+                    backgroundColor: "rgba(13,110,253,0.6)",
+                    borderColor: "#0d6efd",
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                indexAxis: "y",
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    x: {
+                        ticks: {
+                            callback: v => "$" + v.toLocaleString("es-CO")
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    // ============================
+    // PRODUCTOS MÁS VENDIDOS
+    // ============================
+    const productos = {{ kpis.productos_mas_vendidos | tojson }};
+    const ctxProductos = document.getElementById("chartProductos");
+    if (ctxProductos && productos.length > 0) {
+        new Chart(ctxProductos, {
+            type: "bar",
+            data: {
+                labels: productos.map(p => p.Producto),
+                datasets: [{
+                    label: "Total vendido",
+                    data: productos.map(p => p.Total),
+                    backgroundColor: "rgba(40,167,69,0.6)",
+                    borderColor: "#28a745",
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        ticks: {
+                            callback: v => "$" + v.toLocaleString("es-CO")
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    // ============================
+    // MEDIOS DE PAGO
+    // ============================
+    const mediosPago = {{ kpis.medios_pago | tojson }};
+    const ctxMedios = document.getElementById("chartMediosPago");
+    if (ctxMedios && mediosPago.length > 0) {
+        new Chart(ctxMedios, {
+            type: "pie",
+            data: {
+                labels: mediosPago.map(m => m.MedioPago),
+                datasets: [{
+                    data: mediosPago.map(m => m.Total),
+                    backgroundColor: [
+                        "#0d6efd", "#198754", "#ffc107", "#dc3545", "#6f42c1"
+                    ]
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false
+            }
+        });
+    }
+
+    // ============================
+    // DEMANDA INVENTARIO
+    // ============================
+    const demanda = {{ kpis.demanda_inventario | tojson }};
+    const ctxInv = document.getElementById("chartInventario");
+    if (ctxInv && demanda.length > 0) {
+        new Chart(ctxInv, {
+            type: "bar",
+            data: {
+                labels: demanda.map(d => d.Producto),
+                datasets: [{
+                    label: "Demanda esperada",
+                    data: demanda.map(d => d.DemandaEsperada),
+                    backgroundColor: "rgba(255,193,7,0.6)",
+                    borderColor: "#ffc107",
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    y: { beginAtZero: true }
+                }
+            }
+        });
+    }
+
+});
+</script>
 
 {% endblock %}

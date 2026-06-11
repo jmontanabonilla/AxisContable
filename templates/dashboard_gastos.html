@@ -2,144 +2,214 @@
 {% block content %}
 
 <style>
-    .kpi-card {
-        border: none;
-        border-radius: 14px;
-        transition: 0.25s ease-in-out;
-    }
-    .kpi-card:hover {
-        transform: translateY(-6px);
-        box-shadow: 0 8px 24px rgba(0,0,0,0.15);
-    }
-    .kpi-icon {
-        font-size: 36px;
-        opacity: 0.85;
-    }
-    .chart-card {
-        border-radius: 14px;
-    }
+.chart-center {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100%;
+}
 </style>
 
 <div class="container-fluid">
 
     <!-- TÍTULO -->
-    <div class="d-flex justify-content-between align-items-center mb-4">
-        <h2 class="fw-bold">📊 Dashboard de Gastos Generales</h2>
-    </div>
+    <h2 class="fw-bold mb-4">📊 Dashboard de Gastos Generales</h2>
 
     <!-- ========================= -->
     <!-- 🔥 TARJETAS KPI -->
     <!-- ========================= -->
-    <div class="row g-4 mb-4">
+<div class="row g-4 mb-4">
 
-        <!-- Total Registros -->
-        <div class="col-md-3">
-            <div class="card shadow-sm kpi-card">
-                <div class="card-body text-center">
-                    <div class="kpi-icon text-primary mb-2">
-                        <i class="bi bi-receipt"></i>
-                    </div>
-                    <h6 class="text-muted">Total Registros</h6>
-                    <h3 class="fw-bold">{{ kpis.total_registros }}</h3>
-                </div>
+    <!-- Total Registros -->
+    <div class="col-md-3">
+        <div class="card shadow-sm p-3 text-center"
+            data-bs-toggle="modal" data-bs-target="#modalTotalRegistros">
+            <div class="text-primary fs-2 mb-2">
+                <i class="bi bi-receipt"></i>
             </div>
-        </div>
+            <h6 class="text-muted">Total Registros</h6>
 
-        <!-- Presupuesto Proyectado -->
-        <div class="col-md-3">
-            <div class="card shadow-sm kpi-card">
-                <div class="card-body text-center">
-                    <div class="kpi-icon text-success mb-2">
-                        <i class="bi bi-graph-up-arrow"></i>
-                    </div>
-                    <h6 class="text-muted">Presupuesto Próximo Mes</h6>
-                    <h3 class="fw-bold">
-                        ${{ "{:,.0f}".format(kpis.presupuesto_proyectado|default(0)).replace(",", ".") }}
-                    </h3>
-                </div>
+            <h3 class="fw-bold">{{ kpis.total_registros }}</h3>
+
+            <small class="text-muted">
+                Gastos registrados
+            </small>
+        </div>
+    </div>
+
+    <!-- Gasto del Mes -->
+    <div class="col-md-3">
+        <div class="card shadow-sm p-3 text-center"
+            data-bs-toggle="modal" data-bs-target="#modalGastoMes">
+            <div class="text-info fs-2 mb-2">
+                <i class="bi bi-cash-stack"></i>
             </div>
-        </div>
 
-        <!-- Flujo de Caja Real -->
-        <div class="col-md-3">
-            <div class="card shadow-sm kpi-card">
-                <div class="card-body text-center">
-                    <div class="kpi-icon text-warning mb-2">
-                        <i class="bi bi-cash-coin"></i>
-                    </div>
-                    <h6 class="text-muted">Flujo de Caja Real</h6>
-                    <h3 class="fw-bold text-warning">
-                        ${{ "{:,.0f}".format(kpis.flujo_caja_real|default(0)).replace(",", ".") }}
-                    </h3>
-                </div>
+            <h6 class="text-muted">Gasto del Mes</h6>
+
+            <h3 class="fw-bold text-info">
+                ${{ "{:,.0f}".format(kpis.gasto_mes_actual).replace(",", ".") }}
+            </h3>
+
+            <small class="text-muted">
+                Mes actual
+            </small>
+        </div>
+    </div>
+
+    <!-- Presupuesto Próximo Mes -->
+    <div class="col-md-3">
+        <div class="card shadow-sm p-3 text-center"
+            data-bs-toggle="modal" data-bs-target="#modalPresupuesto">
+            <div class="text-success fs-2 mb-2">
+                <i class="bi bi-graph-up-arrow"></i>
             </div>
-        </div>
+            <h6 class="text-muted">Presupuesto Próximo Mes</h6>
 
-        <!-- Parámetros IA -->
-        <div class="col-md-3">
-            <div class="card shadow-sm kpi-card">
-                <div class="card-body text-center">
-                    <div class="kpi-icon text-info mb-2">
-                        <i class="bi bi-cpu"></i>
-                    </div>
-                    <h6 class="text-muted">IA Entrenamiento</h6>
-                    <h3 class="fw-bold">{{ kpis.pct_train }}%</h3>
-                    <small class="text-muted">Prueba: {{ kpis.pct_test }}% | Seguridad: {{ kpis.factor_seguridad }}</small>
-                </div>
+            <h3 class="fw-bold text-success">
+                ${{ "{:,.0f}".format(kpis.presupuesto_proyectado).replace(",", ".") }}
+            </h3>
+
+            <small class="text-muted">
+                IA + Factor de seguridad + Base usuario
+            </small>
+        </div>
+    </div>
+
+    <!-- Proyección de Gastos -->
+    <div class="col-md-3">
+        <div class="card shadow-sm p-3 text-center"
+            data-bs-toggle="modal" data-bs-target="#modalProyeccionGastos">
+            <div class="text-danger fs-2 mb-2">
+                <i class="bi bi-graph-down-arrow"></i>
             </div>
-        </div>
+            <h6 class="text-muted">Proyección de Gastos</h6>
 
+            <h3 class="fw-bold text-danger">
+                ${{ "{:,.0f}".format(kpis.proyeccion_gastos).replace(",", ".") }}
+            </h3>
+
+            <small class="text-muted">
+                Tendencia histórica IA
+            </small>
+        </div>
+    </div>
+
+</div>
+
+    <!-- ========================= -->
+    <!-- 📉 GASTOS POR MES -->
+    <!-- ========================= -->
+    <div class="card shadow-sm mb-4">
+        <div class="card-header fw-bold">📉 Gastos por Mes</div>
+        <div class="card-body chart-center" style="height: 350px;">
+            <canvas id="chartGastosMes"></canvas>
+        </div>
     </div>
 
     <!-- ========================= -->
-    <!-- 🔥 GRÁFICOS -->
+    <!-- 💰 INGRESOS VS GASTOS -->
     <!-- ========================= -->
-    <div class="row g-4 mb-4">
-
-        <!-- Gastos por Mes -->
-        <div class="col-md-6">
-            <div class="card shadow-sm chart-card">
-                <div class="card-header fw-bold bg-light">
-                    📉 Gastos por Mes
-                </div>
-                <div class="card-body">
-                    <canvas id="chartGastosMes" height="160"></canvas>
-                </div>
-            </div>
+    <div class="card shadow-sm mb-4">
+        <div class="card-header fw-bold">💰 Ingresos vs Gastos</div>
+        <div class="card-body chart-center" style="height: 350px;">
+            <canvas id="chartIngresosGastos"></canvas>
         </div>
-
-        <!-- Ingresos vs Gastos -->
-        <div class="col-md-6">
-            <div class="card shadow-sm chart-card">
-                <div class="card-header fw-bold bg-light">
-                    💰 Ingresos vs Gastos
-                </div>
-                <div class="card-body">
-                    <canvas id="chartIngresosGastos" height="160"></canvas>
-                </div>
-            </div>
-        </div>
-
     </div>
 
     <!-- ========================= -->
-    <!-- 🔥 PROYECCIÓN IA -->
+    <!-- 📈 TENDENCIA DE GASTOS -->
     <!-- ========================= -->
-    <div class="row g-4 mb-4">
-
-        <div class="col-md-12">
-            <div class="card shadow-sm chart-card">
-                <div class="card-header fw-bold bg-light">
-                    🤖 Proyección IA del Próximo Mes
-                </div>
-                <div class="card-body">
-                    <canvas id="chartProyeccion" height="140"></canvas>
-                </div>
-            </div>
+    <div class="card shadow-sm mb-4">
+        <div class="card-header fw-bold">📈 Tendencia de Gastos (Histórico + Proyección)</div>
+        <div class="card-body chart-center" style="height: 400px;">
+            <canvas id="chartTendenciaGastos"></canvas>
         </div>
-
     </div>
 
+    <!-- ========================= -->
+    <!-- 🤖 PROYECCIÓN IA -->
+    <!-- ========================= -->
+    <div class="card shadow-sm mb-4">
+        <div class="card-header fw-bold">🤖 Proyección IA del Próximo Mes</div>
+        <div class="card-body chart-center" style="height: 300px;">
+            <canvas id="chartProyeccionIA"></canvas>
+        </div>
+    </div>
+
+</div> <!-- FIN DEL CONTAINER -->
+
+<!-- ========================= -->
+<!-- 🧩 MODALES -->
+<!-- ========================= -->
+
+<!-- Modal Total Registros -->
+<div class="modal fade" id="modalTotalRegistros" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header bg-primary text-white">
+        <h5 class="modal-title">Detalle de Registros</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <p><strong>Total de registros:</strong> {{ kpis.total_registros }}</p>
+        <p><strong>Total gastado:</strong> 
+            ${{ "{:,.0f}".format(kpis.gasto_total).replace(",", ".") }}
+        </p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Gasto Mes -->
+<div class="modal fade" id="modalGastoMes" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header bg-info text-white">
+        <h5 class="modal-title">Detalle del Gasto del Mes</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <p><strong>Gasto del mes:</strong> 
+            ${{ "{:,.0f}".format(kpis.gasto_mes_actual).replace(",", ".") }}
+        </p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Presupuesto -->
+<div class="modal fade" id="modalPresupuesto" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header bg-success text-white">
+        <h5 class="modal-title">Detalle del Presupuesto Próximo Mes</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <p><strong>Presupuesto seguro IA:</strong> 
+            ${{ "{:,.0f}".format(kpis.presupuesto_proyectado).replace(",", ".") }}
+        </p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Proyección Gastos -->
+<div class="modal fade" id="modalProyeccionGastos" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header bg-danger text-white">
+        <h5 class="modal-title">Detalle de Proyección de Gastos</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <p><strong>Proyección IA:</strong> 
+            ${{ "{:,.0f}".format(kpis.proyeccion_gastos).replace(",", ".") }}
+        </p>
+      </div>
+    </div>
+  </div>
 </div>
 
 <!-- ========================= -->
@@ -148,15 +218,16 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
 <script>
-document.addEventListener("DOMContentLoaded", function() {
+document.addEventListener("DOMContentLoaded", function () {
 
     const gastosMes = {{ kpis.gastos_por_mes | tojson }};
     const ingresosMes = {{ kpis.ingresos_por_mes | tojson }};
     const proyeccionIA = {{ kpis.proyeccion_ia | tojson }};
+    const tendencia = {{ kpis.tendencia_gastos | tojson }};
 
-    // ================================
-    // 📉 GASTOS POR MES
-    // ================================
+    /* ============================
+       📉 GASTOS POR MES (NO MODIFICADO)
+    ============================ */
     new Chart(document.getElementById("chartGastosMes"), {
         type: "bar",
         data: {
@@ -173,9 +244,9 @@ document.addEventListener("DOMContentLoaded", function() {
         options: { plugins: { legend: { display: false }}}
     });
 
-    // ================================
-    // 💰 INGRESOS VS GASTOS (CORREGIDO)
-    // ================================
+    /* ============================
+       💰 INGRESOS VS GASTOS (NO MODIFICADO)
+    ============================ */
     new Chart(document.getElementById("chartIngresosGastos"), {
         type: "line",
         data: {
@@ -206,13 +277,48 @@ document.addEventListener("DOMContentLoaded", function() {
         }
     });
 
-    // ================================
-    // 🤖 PROYECCIÓN IA
-    // ================================
-    new Chart(document.getElementById("chartProyeccion"), {
+    /* ============================
+       📈 TENDENCIA DE GASTOS
+    ============================ */
+    new Chart(document.getElementById("chartTendenciaGastos"), {
+        type: "line",
+        data: {
+            labels: tendencia.periodos,
+            datasets: [
+                {
+                    label: "Histórico",
+                    data: tendencia.montos_historicos,
+                    borderColor: "#0d6efd",
+                    backgroundColor: "rgba(13,110,253,0.15)",
+                    borderWidth: 3,
+                    pointRadius: 5,
+                    pointBackgroundColor: "#0d6efd",
+                    fill: false,
+                    tension: 0.4
+                },
+                {
+                    label: "Proyección",
+                    data: tendencia.montos_proyectados,
+                    borderColor: "#198754",
+                    backgroundColor: "rgba(25,135,84,0.15)",
+                    borderWidth: 3,
+                    pointRadius: 5,
+                    pointBackgroundColor: "#198754",
+                    borderDash: [6, 6],
+                    fill: false,
+                    tension: 0.4
+                }
+            ]
+        }
+    });
+
+    /* ============================
+       🤖 PROYECCIÓN IA
+    ============================ */
+    new Chart(document.getElementById("chartProyeccionIA"), {
         type: "bar",
         data: {
-            labels: ["Último Mes", "Proyección IA"],
+            labels: ["Último Mes", "Presupuesto Seguro"],
             datasets: [{
                 label: "Gasto",
                 data: proyeccionIA,

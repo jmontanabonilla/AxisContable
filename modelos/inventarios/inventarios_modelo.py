@@ -141,7 +141,9 @@ def preparar_dataset_inventario():
 
 def generar_resultados_inventario():
 
-    # ---------------- PARÁMETROS IA ----------------
+    # ============================================================
+    # 1. PARÁMETROS IA (GENERALES)
+    # ============================================================
     parametros_ia = query_all_flat("""
         SELECT NombreParametro, ValorParametro
         FROM ParametrosNegocio
@@ -151,10 +153,11 @@ def generar_resultados_inventario():
     params_ia = {p[0]: str(p[1]).strip() for p in parametros_ia}
 
     usar_proyeccion = int(params_ia.get("IA_USAR_PROYECCION", 0))
-    horizonte_futuro = int(params_ia.get("IA_HORIZONTE_PROYECCION_FUTURO", 7))
     factor_seguridad = safe_float(params_ia.get("IA_FACTOR_SEGURIDAD", 1.0))
 
-    # ---------------- PARÁMETROS INVENTARIOS ----------------
+    # ============================================================
+    # 2. PARÁMETROS IA (INVENTARIOS)
+    # ============================================================
     parametros_inv = query_all_flat("""
         SELECT NombreParametro, ValorParametro
         FROM ParametrosNegocio
@@ -163,54 +166,59 @@ def generar_resultados_inventario():
 
     params_inv = {p[0]: str(p[1]).strip() for p in parametros_inv}
 
+    horizonte_futuro = int(params_inv.get("IA_HORIZONTE_PROYECCION_FUTURO", 7))
     margen_potencial_factor = safe_float(params_inv.get("IA_MARGEN_POTENCIAL", 0.7))
     dias_alerta_venc = int(params_inv.get("INV_DIAS_ALERTA_VENCIMIENTO", 30))
 
-    # ---------------- CARGAR DATOS ----------------
+    # ============================================================
+    # 3. CARGA DE DATOS
+    # ============================================================
     df = preparar_dataset_inventario()
     if df.empty:
         return {}
 
     resultados = []
 
-    # ---------------- ENTRENAR Y PROYECTAR ----------------
+    # ============================================================
+    # 4. ENTRENAR Y PROYECTAR POR PRODUCTO
+    # ============================================================
     for inv_id, grupo in df.groupby("InventarioId"):
 
         y_real = grupo["CantidadDia"].values.astype(float)
 
-        # ============================================================
-        # CASO 1: SIN DATOS SUFICIENTES
-        # ============================================================
+        # ---------------- CASO 1: SIN DATOS SUFICIENTES ----------------
         if len(y_real) < 2:
             demanda_futura = 0
             error_modelo = 0
             calidad = "Sin datos suficientes"
             metodo = "Regla"
 
-            # SIEMPRE mostrar stock óptimo
             stock_optimo = max(0, round(grupo["StockActual"].iloc[0] * factor_seguridad))
 
         else:
-            # ============================================================
-            # CASO 2: MODELO IA
-            # ============================================================
+            # ---------------- CASO 2: MODELO IA + REGLA DE NEGOCIO ----------------
             X = np.arange(len(y_real)).reshape(-1, 1)
             modelo = LinearRegression()
             modelo.fit(X, y_real)
 
+            # Demanda diaria IA (solo para error y calidad)
             demanda_dia = float(modelo.predict([[len(y_real)]])[0])
-            demanda_futura = max(0, demanda_dia * horizonte_futuro)
 
+            # REGLA DE NEGOCIO: DemandaEsperada = StockActual × FactorSeguridad
+            stock_actual = safe_float(grupo["StockActual"].iloc[0])
+            demanda_futura = max(0, stock_actual * factor_seguridad)
+
+            # Error del modelo IA (se mantiene)
             y_pred = modelo.predict(X)
             error_modelo = calcular_rmse(y_real, y_pred)
 
             calidad = clasificar_calidad(error_modelo, len(y_real), demanda_futura)
 
-            # ============================================================
-            # STOCK ÓPTIMO SIEMPRE SE CALCULA
-            # ============================================================
-            metodo = "IA"
-            stock_optimo = max(0, round(demanda_futura * factor_seguridad))
+            metodo = "IA+Regla"
+
+            # Stock óptimo = demanda esperada (ya incluye factor)
+            stock_optimo = max(0, round(demanda_futura))
+
 
         resultados.append({
             "InventarioId": inv_id,
@@ -227,7 +235,9 @@ def generar_resultados_inventario():
 
     df_final = pd.DataFrame(resultados)
 
-    # ---------------- GUARDAR PROYECCIÓN ----------------
+    # ============================================================
+    # 5. GUARDAR PROYECCIÓN EN BD (MERGE)
+    # ============================================================
     if usar_proyeccion and not df_final.empty:
         for _, row in df_final.iterrows():
 
@@ -265,7 +275,9 @@ def generar_resultados_inventario():
                 safe_float(factor_seguridad)
             ))
 
-    # ---------------- KPIs ----------------
+    # ============================================================
+    # 6. KPIs
+    # ============================================================
     valor_inventario = float((df_final["StockActual"] * df_final["Costo"]).sum())
     margen_potencial = valor_inventario * margen_potencial_factor
 

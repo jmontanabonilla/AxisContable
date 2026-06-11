@@ -1,5 +1,5 @@
 # utils.py
-from datetime import datetime
+from datetime import datetime, timedelta
 from num2words import num2words
 import calendar
 import hashlib
@@ -40,7 +40,6 @@ def format_date_for_input(fecha: datetime) -> str:
     Convierte un datetime a formato YYYY-MM-DD para inputs HTML.
     """
     return fecha.strftime("%Y-%m-%d")
-
 
 # ============================================================
 # 2. NÚMEROS A LETRAS
@@ -115,3 +114,19 @@ def generar_qr_base64(data: str) -> str:
     buffer = BytesIO()
     img.save(buffer, format="PNG")
     return base64.b64encode(buffer.getvalue()).decode("utf-8")
+
+# ============================================================
+# 5. Fechas de Vencimiento de facturas Proveedores
+# ============================================================
+
+
+from datetime import datetime, timedelta
+
+def dentro_horizonte_vencimiento(fecha_vencimiento: datetime, dias: int) -> bool:
+    """
+    Retorna True si la fecha de vencimiento está dentro del rango:
+    HOY - dias  →  HOY + dias
+    """
+    hoy = datetime.now()
+    return (fecha_vencimiento >= hoy - timedelta(days=dias)) and \
+           (fecha_vencimiento <= hoy + timedelta(days=dias))

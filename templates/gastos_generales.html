@@ -67,9 +67,9 @@
           <label class="form-label">Categoría</label>
           <select name="categoria_id" class="form-select" required>
             <option value="">Seleccione...</option>
-            {% for cat in categorias %}
-              <option value="{{ cat.id }}">
-                {{ cat.nombre }}{% if cat.es_unica %} (única por mes){% endif %}
+            {% for cat in categorias_gasto %}
+              <option value="{{ cat[0] }}">
+                {{ cat[1] }}{% if cat[2] %} (única por mes){% endif %}
               </option>
             {% endfor %}
           </select>
@@ -168,13 +168,15 @@
                   <div class="mb-3">
                     <label class="form-label">Categoría</label>
                     <select name="categoria_id_edit" class="form-select" required>
-                      {% for cat in categorias %}
-                        <option value="{{ cat.id }}" {% if cat.id == g.categoria_id %}selected{% endif %}>
-                          {{ cat.nombre }}{% if cat.es_unica %} (única por mes){% endif %}
+                      {% for cat in categorias_gasto %}
+                        <option value="{{ cat[0] }}" {% if cat[0] == g.categoria_id %}selected{% endif %}>
+                          {{ cat[1] }}{% if cat[2] %} (única por mes){% endif %}
                         </option>
                       {% endfor %}
                     </select>
                   </div>
+
+
 
                   <div class="mb-3">
                     <label class="form-label">Valor</label>

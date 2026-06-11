@@ -11,8 +11,19 @@ from num2words import num2words
 from decimal import Decimal
 from modelos.inventarios.inventarios_modelo import generar_resultados_inventario
 from modelos.inventarios.dasboard_inventarios import generar_kpis_inventario
-from modelos.facturasproveedores.dashboard_facturasproveedores import generar_kpis_facturas_proveedores
-from modelos.gastos.dashboard_gastos import generar_kpis_gastos
+from modelos.facturasproveedores.dashboard_facturasproveedores import (
+    generar_kpis_facturas_proveedores,
+    _resultado_vacio
+)
+from modelos.ventas.dashboard_ventas import (
+    generar_kpis_ventas,
+    _resultado_vacio
+)
+
+from modelos.gastos.dashboard_gastos import (
+    generar_kpis_gastos,
+    _resultado_vacio
+)
 import hashlib
 import math
 import functools
@@ -1863,11 +1874,12 @@ def gastos_generales_page():
     if request.method == "POST":
         fecha = (request.form.get("fecha") or "").strip()
         tipo_registro_id = request.form.get("tipo_registro_id")
+        categoria_id = request.form.get("categoria_id")  # ✅ AGREGADO
         descripcion = (request.form.get("descripcion") or "").strip()
         valor = (request.form.get("valor") or "").strip()
         usuario_id = session.get("user_id")
 
-        if not fecha or not tipo_registro_id or not descripcion or not valor:
+        if not fecha or not tipo_registro_id or not categoria_id or not descripcion or not valor:
             flash("Todos los campos son obligatorios.", "danger")
             return redirect(url_for("gastos_generales_page", periodo=periodo_str))
 
@@ -1886,11 +1898,11 @@ def gastos_generales_page():
             flash("No se permite registrar gastos en meses anteriores.", "danger")
             return redirect(url_for("gastos_generales_page", periodo=periodo_str))
 
-        # INSERT
+        # INSERT corregido con CategoriaId
         exec_sql("""
-            INSERT INTO GastosGenerales (Fecha, TipoRegistroId, Descripcion, Valor, UsuarioId, FechaRegistro, Estado)
-            VALUES (?, ?, ?, ?, ?, GETDATE(), 1)
-        """, (fecha, tipo_registro_id, descripcion, valor, usuario_id))
+            INSERT INTO GastosGenerales (Fecha, TipoRegistroId, CategoriaId, Descripcion, Valor, UsuarioId, FechaRegistro, Estado)
+            VALUES (?, ?, ?, ?, ?, ?, GETDATE(), 1)
+        """, (fecha, tipo_registro_id, categoria_id, descripcion, valor, usuario_id))
 
         flash("Gasto registrado exitosamente.", "success")
         return redirect(url_for("gastos_generales_page", periodo=periodo_str))
@@ -1938,9 +1950,12 @@ def gastos_generales_page():
                g.Descripcion,
                g.Valor,
                g.FechaRegistro,
-               g.TipoRegistroId
+               g.TipoRegistroId,
+               g.CategoriaId,
+               cg.Nombre
         FROM GastosGenerales g
         JOIN TiposRegistro tr ON g.TipoRegistroId = tr.Id
+        LEFT JOIN CategoriasGasto cg ON g.CategoriaId = cg.Id
         WHERE {where}
         ORDER BY g.Id DESC
         OFFSET ? ROWS FETCH NEXT ? ROWS ONLY
@@ -1953,9 +1968,20 @@ def gastos_generales_page():
         "descripcion": r[3],
         "valor": float(r[4]),
         "fecha_registro": r[5].strftime("%Y-%m-%d %H:%M"),
-        "tipo_registro_id": r[6]
+        "tipo_registro_id": r[6],
+        "categoria_id": r[7],
+        "categoria": r[8] or "Sin categoría"
     } for r in rows]
 
+    # ---------------- CATEGORÍAS DE GASTOS ----------------
+    categorias_gasto = query_all("""
+        SELECT Id, Nombre, EsUnicaMes
+        FROM CategoriasGasto
+        WHERE Estado = 1
+        ORDER BY Nombre ASC
+    """)
+
+    # ---------------- TIPOS DE REGISTRO ----------------
     tipos_registro = query_all("""
         SELECT Id, NombreTipo
         FROM TiposRegistro
@@ -1975,6 +2001,7 @@ def gastos_generales_page():
         "gastos_generales.html",
         menu=menu,
         gastos=gastos,
+        categorias_gasto=categorias_gasto,
         tipos_registro=tipos_registro,
         page=page,
         total_pages=total_pages,
@@ -2016,10 +2043,11 @@ def editar_gasto_general(gasto_id):
 
     fecha = request.form.get("fecha_edit")
     tipo_registro_id = request.form.get("tipo_registro_id_edit")
+    categoria_id = request.form.get("categoria_id_edit")   # ✅ AGREGADO
     descripcion = request.form.get("descripcion_edit")
     valor = request.form.get("valor_edit")
 
-    if not fecha or not tipo_registro_id or not descripcion or not valor:
+    if not fecha or not tipo_registro_id or not categoria_id or not descripcion or not valor:
         flash("Todos los campos son obligatorios.", "danger")
         return redirect(url_for("gastos_generales_page", periodo=periodo_str))
 
@@ -2035,12 +2063,13 @@ def editar_gasto_general(gasto_id):
 
     exec_sql("""
         UPDATE GastosGenerales
-        SET Fecha = ?, TipoRegistroId = ?, Descripcion = ?, Valor = ?, FechaRegistro = GETDATE()
+        SET Fecha = ?, TipoRegistroId = ?, CategoriaId = ?, Descripcion = ?, Valor = ?, FechaRegistro = GETDATE()
         WHERE Id = ?
-    """, (fecha, tipo_registro_id, descripcion, valor, gasto_id))
+    """, (fecha, tipo_registro_id, categoria_id, descripcion, valor, gasto_id))
 
     flash("Gasto actualizado correctamente.", "success")
     return redirect(url_for("gastos_generales_page", periodo=periodo_str))
+
 
 
 # ---------------- ROUTES: PROVEEDORES ----------------
@@ -2099,7 +2128,7 @@ def proveedores_page():
             flash("Formato de fecha de vencimiento inválido.", "danger")
             return redirect(url_for("proveedores_page", periodo=periodo_str))
 
-        if venc_dt <= fecha_dt:
+        if venc_dt < fecha_dt:
             flash("La fecha de vencimiento debe ser posterior a la fecha de emisión.", "danger")
             return redirect(url_for("proveedores_page", periodo=periodo_str))
 
@@ -2475,12 +2504,6 @@ def editar_consecutivo(consecutivo_id):
     flash("Consecutivo actualizado.", "success")
     return redirect(url_for("consecutivos_page"))
 
-
-# ---------------- ROUTES: Notas Creditos ----------------
-
-@app.route("/ventas/notas_credito")
-def notas_credito():
-    return render_template("notas_credito.html")
 
 # ---------------- RUTA: CAJA REGISTRADORA ----------------
 
@@ -3883,9 +3906,18 @@ def inactivar_tipo_registro(tipo_id):
 # ---------------- ROUTES: Dashboard Ventas ----------------
 
 @app.route("/ventas/dashboard")
+@require_permission("VENTAS", "ver")
 def dashboard_ventas():
-    return render_template("dashboard_ventas.html")
 
+    kpis = generar_kpis_ventas()
+
+    if not kpis:
+        kpis = _resultado_vacio()
+
+    return render_template(
+        "dashboard_ventas.html",
+        kpis=kpis
+    )
 
 
 # ---------------- ROUTES: Dashboard Gastos ----------------
@@ -3896,11 +3928,16 @@ def dashboard_gastos():
 
     kpis = generar_kpis_gastos()
 
+    # Si el modelo falla o no hay datos, usar estructura vacía
+    if not kpis:
+        kpis = _resultado_vacio()
+
     return render_template(
         "dashboard_gastos.html",
         kpis=kpis
     )
 
+   
 
 # ---------------- ROUTES: Dashboard Inventarios ----------------
 
@@ -3916,16 +3953,22 @@ def dashboard_inventarios():
     )
 
 # ---------------- ROUTES: Dashboard Facturas Proveedores ----------------
-@app.route("/dashboard_facturas_proveedores")
+
+@app.route("/proveedores/dashboard")
 @require_permission("PROVEEDORES", "ver")
 def dashboard_facturas_proveedores():
 
     kpis = generar_kpis_facturas_proveedores()
 
+    # Si el modelo falla o no hay datos, usar estructura vacía
+    if not kpis:
+        kpis = _resultado_vacio()
+
     return render_template(
         "dashboard_facturas_proveedores.html",
         kpis=kpis
     )
+
 
 
 # --------------- run ----------------
