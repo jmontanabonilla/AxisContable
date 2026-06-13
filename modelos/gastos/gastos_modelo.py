@@ -90,6 +90,7 @@ def obtener_horizonte_proyeccion_gastos():
 def obtener_datos_gastos():
     rows = query_all_flat("""
         SELECT 
+            Id,
             CONVERT(date, Fecha),
             Descripcion,
             Valor,
@@ -100,7 +101,7 @@ def obtener_datos_gastos():
     """)
 
     df = pd.DataFrame(list(rows), columns=[
-        "Fecha", "Descripcion", "Valor", "TipoRegistroId"
+        "Id", "Fecha", "Descripcion", "Valor", "TipoRegistroId"
     ])
 
     if not df.empty:
@@ -108,6 +109,7 @@ def obtener_datos_gastos():
         df["Valor"] = df["Valor"].astype(float)
 
     return df
+
 
 
 def preparar_dataset_gastos():
@@ -324,7 +326,10 @@ def obtener_proyeccion_gastos_desde_bd():
     }
 
 
-def archivar_proyeccion_gastos(usuario_id):
+def archivar_proyeccion_gastos(usuario_id=None):
+    if usuario_id is None:
+        usuario_id = 1  # valor por defecto
+
     row = query_all_flat("""
         SELECT TOP 1
             GastoProyectado,
@@ -520,7 +525,7 @@ def obtener_flujo_proyectado_desde_bd():
 #  CONSOLIDACIÓN FINAL PARA DASHBOARD
 # ============================================================
 
-def generar_resultados_gastos(anio_dashboard=None, usuario_id=1):
+def generar_resultados_gastos(anio_dashboard=None):
     params = obtener_parametros_ia()
     df_agg = preparar_dataset_gastos()
 
@@ -559,7 +564,7 @@ def generar_resultados_gastos(anio_dashboard=None, usuario_id=1):
     # ============================
     # Persistencia en BD (auditoría + proyección)
     # ============================
-    archivar_proyeccion_gastos(usuario_id)
+    archivar_proyeccion_gastos()
     guardar_proyeccion_gastos(tendencia)
 
     # ============================
@@ -569,7 +574,9 @@ def generar_resultados_gastos(anio_dashboard=None, usuario_id=1):
     total_registros_gastos = len(df_detalle)
     total_gastos = float(df_detalle["Valor"].sum()) if not df_detalle.empty else 0.0
 
+    # ============================
     # Gasto del mes actual
+    # ============================
     hoy = datetime.now()
     mes_actual = hoy.month
     anio_actual = hoy.year
@@ -579,11 +586,19 @@ def generar_resultados_gastos(anio_dashboard=None, usuario_id=1):
             (df_detalle["Fecha"].dt.month == mes_actual) &
             (df_detalle["Fecha"].dt.year == anio_actual)
         ]
+
+        # Total de gasto del mes
         gasto_mes_actual = float(df_mes["Valor"].sum()) if not df_mes.empty else 0.0
+
+        # Total de registros del mes (únicos)
+        total_registros_mes = int(len(df_mes.drop_duplicates(subset=["Id"]))) if not df_mes.empty else 0
     else:
         gasto_mes_actual = 0.0
+        total_registros_mes = 0
 
+    # ============================
     # Presupuesto próximo mes (seguro)
+    # ============================
     presupuesto_proximo_mes = float(presupuesto["PresupuestoSeguro"])
 
     # ============================
@@ -607,5 +622,6 @@ def generar_resultados_gastos(anio_dashboard=None, usuario_id=1):
         "total_registros_gastos": int(total_registros_gastos),
         "total_gastos": total_gastos,
         "gasto_mes_actual": gasto_mes_actual,
+        "total_registros_mes": total_registros_mes,
         "presupuesto_proximo_mes": presupuesto_proximo_mes
     }

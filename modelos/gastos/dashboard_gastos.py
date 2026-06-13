@@ -47,11 +47,11 @@ def generar_kpis_gastos(anio_dashboard=None):
     # ============================
     # Datos base del modelo
     # ============================
-    df = r.get("df", [])                          
-    modelo = r.get("modelo")                      
-    presupuesto = r.get("presupuesto", {})        
-    flujo = r.get("flujo_caja", {})               
-    params = r.get("parametros_ia", {})           
+    df = r.get("df", [])
+    modelo = r.get("modelo")
+    presupuesto = r.get("presupuesto", {})
+    flujo = r.get("flujo_caja", {})
+    params = r.get("parametros_ia", {})
     ingresos_gastos_mes = r.get("ingresos_gastos_mes", [])
     tendencia = r.get("tendencia_gastos", {})
 
@@ -61,6 +61,7 @@ def generar_kpis_gastos(anio_dashboard=None):
     total_registros = int(r.get("total_registros_gastos", 0))
     gasto_total = float(r.get("total_gastos", 0.0))
     gasto_mes_actual = float(r.get("gasto_mes_actual", 0.0))
+    total_registros_mes = int(r.get("total_registros_mes", 0))
 
     # Proyección de gastos (tendencia IA)
     proyeccion_gastos = tendencia.get("proyeccion_gastos", 0)
@@ -109,6 +110,7 @@ def generar_kpis_gastos(anio_dashboard=None):
         "total_registros": total_registros,
         "gasto_total": gasto_total,
         "gasto_mes_actual": gasto_mes_actual,
+        "total_registros_mes": total_registros_mes,
         "presupuesto_proyectado": presupuesto_proyectado,
         "flujo_caja_proyectado": flujo_caja_proyectado,
         "proyeccion_gastos": proyeccion_gastos,
@@ -126,4 +128,3 @@ def generar_kpis_gastos(anio_dashboard=None):
         # Tendencia completa
         "tendencia_gastos": tendencia,
     }
-

@@ -44,21 +44,23 @@
         <div class="col-md-3">
             <div class="card shadow-sm p-3 text-center"
                 data-bs-toggle="modal" data-bs-target="#modalVentasMes">
+                
                 <div class="text-info fs-2 mb-2">
                     <i class="bi bi-cash-stack"></i>
                 </div>
 
                 <h6 class="text-muted">Ventas del Mes</h6>
 
-                <!-- Registros del mes actual -->
+                <!-- Registros del mes actual (CORREGIDO) -->
                 <h3 class="fw-bold text-info">{{ kpis.total_registros_mes }}</h3>
 
-                <!-- Total ventas del mes actual -->
+                <!-- Total ventas del mes actual (CORREGIDO) -->
                 <small class="text-muted">
                     ${{ "{:,.0f}".format(kpis.ventas_mes).replace(",", ".") }}
                 </small>
             </div>
         </div>
+
 
 
 
@@ -202,6 +204,7 @@
 <div class="modal fade" id="modalVentasMes" tabindex="-1">
   <div class="modal-dialog modal-dialog-centered">
     <div class="modal-content">
+
       <div class="modal-header bg-info text-white">
         <h5 class="modal-title">Detalle de Ventas del Mes</h5>
         <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
@@ -209,13 +212,18 @@
 
       <div class="modal-body">
 
-        <p><strong>Registros del mes:</strong> {{ kpis.total_registros_mes }}</p>
+        <p>
+          <strong>Registros del mes:</strong>
+          {{ kpis.total_registros_mes }}
+        </p>
 
-        <p><strong>Total ventas del mes:</strong> 
-            ${{ "{:,.0f}".format(kpis.ventas_mes).replace(",", ".") }}
+        <p>
+          <strong>Total ventas del mes:</strong>
+          ${{ "{:,.0f}".format(kpis.ventas_mes).replace(",", ".") }}
         </p>
 
       </div>
+
     </div>
   </div>
 </div>
@@ -295,86 +303,87 @@ document.addEventListener("DOMContentLoaded", function () {
 /* ============================
        📈 GRÁFICO VENTAS + IA
 ============================ */
-    const ventas = {{ kpis.df_agg | tojson }};
+const ventas = {{ kpis.df_agg | tojson }};
 
-    // Etiquetas YYYY-MM (incluye el mes futuro)
-    const etiquetas = ventas.map(r => r.Periodo);
+// Etiquetas YYYY-MM (histórico + meses futuros)
+const etiquetas = ventas.map(r => r.Periodo);
 
-    // Línea azul: ventas reales (si viene null → 0)
-    const datosReales = ventas.map(r => r.VentasMes ?? 0);
+// Línea azul: ventas reales (si viene null → 0)
+const datosReales = ventas.map(r => r.VentasMes ?? 0);
 
-    // Línea amarilla: proyección IA (histórica + futura)
-    const datosIA = ventas.map(r => r.PrediccionIA ?? null);
+// Línea amarilla: proyección IA (histórica + futura)
+const datosIA = ventas.map(r => r.PrediccionIA ?? null);
 
-    const ctxVentas = document.getElementById("chartVentas");
+const ctxVentas = document.getElementById("chartVentas");
 
-    if (ctxVentas) {
-        new Chart(ctxVentas, {
-            type: "line",
-            data: {
-                labels: etiquetas,
-                datasets: [
-                    {
-                        label: "Ventas Reales",
-                        data: datosReales,
-                        borderColor: "#0d6efd",
-                        backgroundColor: "rgba(13,110,253,0.15)",
-                        borderWidth: 3,
-                        tension: 0.3,
-                        fill: true,
-                        pointRadius: 4,
-                        pointBackgroundColor: "#0d6efd",
-                        spanGaps: true
-                    },
-                    {
-                        label: "Proyección IA",
-                        data: datosIA,
-                        borderColor: "#ff9800",
-                        backgroundColor: "rgba(255,152,0,0.1)",
-                        borderDash: [6, 6],
-                        borderWidth: 3,
-                        tension: 0.3,
-                        fill: false,
-                        pointRadius: 4,
-                        pointBackgroundColor: "#ff9800",
-                        spanGaps: true
-                    }
-                ]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                interaction: {
-                    mode: "index",
-                    intersect: false
+if (ctxVentas) {
+    new Chart(ctxVentas, {
+        type: "line",
+        data: {
+            labels: etiquetas,
+            datasets: [
+                {
+                    label: "Ventas Reales",
+                    data: datosReales,
+                    borderColor: "#0d6efd",
+                    backgroundColor: "rgba(13,110,253,0.15)",
+                    borderWidth: 3,
+                    tension: 0.3,
+                    fill: true,
+                    pointRadius: 4,
+                    pointBackgroundColor: "#0d6efd",
+                    spanGaps: true
                 },
-                plugins: {
-                    legend: { display: true },
-                    tooltip: {
-                        callbacks: {
-                            label: function (ctx) {
-                                const v = ctx.parsed.y;
-                                if (v === null || v === undefined) {
-                                    return ctx.dataset.label + ": sin dato";
-                                }
-                                return ctx.dataset.label + ": $" + v.toLocaleString("es-CO");
+                {
+                    label: "Proyección IA",
+                    data: datosIA,
+                    borderColor: "#ff9800",
+                    backgroundColor: "rgba(255,152,0,0.1)",
+                    borderDash: [6, 6],
+                    borderWidth: 3,
+                    tension: 0.3,
+                    fill: false,
+                    pointRadius: 4,
+                    pointBackgroundColor: "#ff9800",
+                    spanGaps: true
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: {
+                mode: "index",
+                intersect: false
+            },
+            plugins: {
+                legend: { display: true },
+                tooltip: {
+                    callbacks: {
+                        label: function (ctx) {
+                            const v = ctx.parsed.y;
+                            if (v === null || v === undefined) {
+                                return ctx.dataset.label + ": sin dato";
                             }
+                            return ctx.dataset.label + ": $" + v.toLocaleString("es-CO");
                         }
                     }
-                },
-                scales: {
-                    y: {
-                        beginAtZero: true,
-                        ticks: {
-                            callback: function (value) {
-                                return "$" + value.toLocaleString("es-CO");
-                            }
+                }
+            },
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    ticks: {
+                        callback: function (value) {
+                            return "$" + value.toLocaleString("es-CO");
                         }
                     }
                 }
             }
-        });
-    }
+        }
+    });
+}
+
 
     // ============================
     // TOP CLIENTES
@@ -466,33 +475,35 @@ document.addEventListener("DOMContentLoaded", function () {
         });
     }
 
-    // ============================
-    // DEMANDA INVENTARIO
-    // ============================
-    const demanda = {{ kpis.demanda_inventario | tojson }};
-    const ctxInv = document.getElementById("chartInventario");
-    if (ctxInv && demanda.length > 0) {
-        new Chart(ctxInv, {
-            type: "bar",
-            data: {
-                labels: demanda.map(d => d.Producto),
-                datasets: [{
-                    label: "Demanda esperada",
-                    data: demanda.map(d => d.DemandaEsperada),
-                    backgroundColor: "rgba(255,193,7,0.6)",
-                    borderColor: "#ffc107",
-                    borderWidth: 1
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                scales: {
-                    y: { beginAtZero: true }
-                }
+// ============================
+// DEMANDA INVENTARIO
+// ============================
+const demanda = {{ kpis.demanda_inventario | tojson }};
+const ctxInv = document.getElementById("chartInventario");
+
+if (ctxInv && demanda.length > 0) {
+    new Chart(ctxInv, {
+        type: "bar",
+        data: {
+            labels: demanda.map(d => d.Producto),
+            datasets: [{
+                label: "Demanda esperada",
+                data: demanda.map(d => Math.round(d.DemandaEsperada)), // ← SIN DECIMALES
+                backgroundColor: "rgba(255,193,7,0.6)",
+                borderColor: "#ffc107",
+                borderWidth: 1
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                y: { beginAtZero: true }
             }
-        });
-    }
+        }
+    });
+}
+
 
 });
 </script>

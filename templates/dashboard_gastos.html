@@ -32,7 +32,7 @@
             <h3 class="fw-bold">{{ kpis.total_registros }}</h3>
 
             <small class="text-muted">
-                Gastos registrados
+                ${{ "{:,.0f}".format(kpis.gasto_total).replace(",", ".") }}
             </small>
         </div>
     </div>
@@ -169,9 +169,14 @@
         <h5 class="modal-title">Detalle del Gasto del Mes</h5>
         <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
       </div>
+
       <div class="modal-body">
         <p><strong>Gasto del mes:</strong> 
             ${{ "{:,.0f}".format(kpis.gasto_mes_actual).replace(",", ".") }}
+        </p>
+
+        <p><strong>Registros del mes:</strong>
+            {{ kpis.total_registros_mes }}
         </p>
       </div>
     </div>
